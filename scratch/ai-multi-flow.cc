@@ -217,7 +217,9 @@ int main (int argc, char *argv[])
   // Configure TcpSocketBase with the model filepath.
   Config::SetDefault ("ns3::TcpSocketBase::UnfairMitigationDelayStart",
                       TimeValue (Seconds (warmupS)));
-  Config::SetDefault ("ns3::TcpSocketBase::MaxPacketRecords", UintegerValue (10000));
+  // Configure the number of packet records that TcpSocketBase will maintain.
+  Config::SetDefault ("ns3::TcpSocketBase::MaxPacketRecords",
+                      UintegerValue (10000));
 
   /////////////////////////////////////////
   // Create nodes.
