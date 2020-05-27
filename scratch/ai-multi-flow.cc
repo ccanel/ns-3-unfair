@@ -273,12 +273,14 @@ int main (int argc, char *argv[])
   // Setup tracing (as appropriate).
   NS_LOG_INFO ("Configuring tracing.");
   std::stringstream detailsSs;
-  detailsSs << bw << "-" << 
-               rttUs << "us-" << 
-               queP << "p-" << 
-               durS << "s-" << 
-               packet_size << "B-" <<
-               (otherFlows + unfairFlows);
+  detailsSs <<
+    bw << "-" <<
+    rttUs << "us-" <<
+    queP << "p-" <<
+    unfairFlows << "unfair-" <<
+    otherFlows << "other-" <<
+    packet_size << "B" <<
+    durS << "s-";
   std::string details = detailsSs.str ();
 
   if (csv) {
