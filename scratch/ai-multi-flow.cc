@@ -82,7 +82,7 @@ void PrintStats ()
   NS_LOG_INFO (Simulator::Now ().GetSeconds () << " s:");
   for (auto& sink : sinks)
     {
-      NS_ASSERT (sink->GetSockets ().size () == 1);
+      NS_ABORT_UNLESS (sink->GetSockets ().size () == 1);
       Ptr<TcpSocketBase> sock = DynamicCast<TcpSocketBase> (
         sink->GetSockets ().front ());
       TcpSocketBase::Stats stats = sock->GetStats ();
