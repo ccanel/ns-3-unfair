@@ -29,18 +29,21 @@
 
 using namespace ns3;
 
-// Constants.
-#define ENABLE_TRACE       false  // Set to "true" to enable trace
-#define START_TIME         0.0    // Seconds
-#define S_PORT             911    // Well-known port for server
-#define PACKET_SIZE        1380   // Bytes; Assumes 60 bytes for the IP header
-                                  // (20 bytes + up to 40 bytes for options)
-                                  // and a maximum of 60 bytes for the TCP
-                                  // header (20 bytes + up to 40 bytes for
-                                  // options).
-#define MTU                1500   // Bytes
-#define HEADER_AND_OPTION  120    // Bytes
-#define PCAP_LEN           200    // Bytes
+#define ENABLE_TRACE      false     // Set to "true" to enable trace.
+#define START_TIME        0.0       // Seconds
+#define S_PORT            911       // Well-known port for server.
+#define PACKET_SIZE       1380      // Bytes; Assumes 60 bytes for the IP
+                                    // header (20 bytes + up to 40 bytes for
+                                    // options) and a maximum of 60 bytes for
+                                    // the TCP header (20 bytes + up to 40
+                                    // bytes for options).
+#define MTU               1500      // Bytes
+#define HEADER_AND_OPTION 120       // Bytes
+#define PCAP_LEN          200       // Bytes
+#define SRC_TO_ROUTER_BW  "10Gbps"  // Bandwidth from the source to the router.
+                                    // This should be configured to be great
+                                    // enough such that it is not the
+                                    // bottleneck.
 
 // For logging.
 NS_LOG_COMPONENT_DEFINE ("main");
@@ -101,13 +104,11 @@ int main (int argc, char *argv[])
   uint32_t packet_size = PACKET_SIZE;
   uint32_t mtu = MTU;
   double durS = 20;
-  uint32_t recalcUs = 1<<30;
   double warmupS = 5;
   bool pcap = false;
   bool csv = false;
   std::string modelFlp = "";
   std::string outDir = ".";
-  std::string scaleParamsFlp = "";
   uint32_t unfairFlows = 1;
   uint32_t otherFlows = 0;
   std::string otherProto = "ns3::TcpNewReno";
@@ -121,13 +122,11 @@ int main (int argc, char *argv[])
   cmd.AddValue ("queue_capacity_p", "Router queue size (packets).", queP);
   cmd.AddValue ("packet_size", "Size of a single packet (bytes)", packet_size);
   cmd.AddValue ("experiment_duration_s", "Simulation duration (s).", durS);
-  cmd.AddValue ("recalc_us", "Between recalculating ACK delay (us)", recalcUs);
   cmd.AddValue ("warmup_s", "Time before delaying ACKs (s)", warmupS);
   cmd.AddValue ("pcap", "Record a pcap trace from each port (true or false).", pcap);
   cmd.AddValue ("csv", "Record a csv file for BBR receiver (true or false).", csv);
   cmd.AddValue ("model", "Path to the model file.", modelFlp);
   cmd.AddValue ("out_dir", "Directory in which to store output files.", outDir);
-  cmd.AddValue ("scale_params", "Path to a CSV file containing scaling parameters.", scaleParamsFlp);
   cmd.AddValue ("unfair_flows", "Number of BBR flows.", unfairFlows);
   cmd.AddValue ("other_flows", "Number of non-BBR flows.", otherFlows);
   cmd.AddValue ("other_proto", "The TCP variant to use (e.g., \"ns3::TcpCubic\") for the non-BBR flows.", otherProto);
@@ -152,10 +151,10 @@ int main (int argc, char *argv[])
   queSs << queP << "p";
   std::string que = queSs.str ();
 
-  double routerToDeviceBW = bwMbps;
+  double routerToDstBW = bwMbps;
   std::stringstream sndSS;
-  sndSS << routerToDeviceBW << "Mbps";
-  std::string routerToDeviceBWStr = sndSS.str ();
+  sndSS << routerToDstBW << "Mbps";
+  std::string routerToDstBWStr = sndSS.str ();
 
   mtu = packet_size + HEADER_AND_OPTION;
 
@@ -166,21 +165,22 @@ int main (int argc, char *argv[])
   LogComponentEnable ("main", LOG_LEVEL_INFO);
 
   NS_LOG_INFO ("\n" <<
-               "Server to Router Bandwidth (Mbps): " << bwMbps << "\n" <<
-               "Server to Router Delay (us): " << delUs << "\n" <<
-               "Router to Client Bandwidth (Mbps): " << bwMbps << "\n" <<
-               "Router to Client Delay (us): " << delUs << "\n" <<
-               "RTT (us): " << rttUs << "\n" <<
-               "Packet size (bytes): " << packet_size << "\n" <<
-               "Router queue size (packets): "<< queP << "\n" <<
-               "Warmup (s): " << warmupS << "\n" <<
-               "Duration (s): " << durS << "\n" <<
+               "Src to router bandwidth: " << SRC_TO_ROUTER_BW << "\n" <<
+               "Src to router delay: " << del << "\n" <<
+               "Router to dst bandwidth: " << bw << "\n" <<
+               "Router to dst delay: " << del << "\n" <<
+               "RTT: " << rttUs << "us\n" <<
+               "Packet size: " << packet_size << " bytes\n" <<
+               "Router queue capacity: "<< queP << " packets\n" <<
                "BBR flows: " << unfairFlows << "\n" <<
                "Non-BBR flows: " << otherFlows << "\n" <<
                "Non-BBR protocol: " << otherProto << "\n" <<
+               "Warmup: " << warmupS << "s\n" <<
+               "Duration: " << durS << "s\n" <<
+               "Enable unfairness mitigation: " << (enableUnfair ? "yes" : "no") << "\n" <<
                "Fair share estimation type: " << fairShareType << "\n" <<
                "ACK pacing estimation type: " << ackPacingType << "\n" <<
-               "model: " << modelFlp << "\n");
+               "Model: " << modelFlp << "\n");
 
   /////////////////////////////////////////
   // Configure parameters.
@@ -237,13 +237,13 @@ int main (int argc, char *argv[])
 
   // Server to Router.
   PointToPointHelper p2p (PCAP_LEN);
-  p2p.SetDeviceAttribute ("DataRate", StringValue ("10Gbps"));
+  p2p.SetDeviceAttribute ("DataRate", StringValue (SRC_TO_ROUTER_BW));
   p2p.SetChannelAttribute ("Delay", StringValue (del));
   p2p.SetDeviceAttribute ("Mtu", UintegerValue (mtu));
   NetDeviceContainer devices1 = p2p.Install (n0Ton1);
 
   // Router to Client.
-  p2p.SetDeviceAttribute ("DataRate", StringValue (routerToDeviceBWStr));
+  p2p.SetDeviceAttribute ("DataRate", StringValue (routerToDstBWStr));
   p2p.SetChannelAttribute ("Delay", StringValue (del));
   p2p.SetDeviceAttribute ("Mtu", UintegerValue (mtu));
   p2p.SetQueue ("ns3::DropTailQueue", "MaxSize", QueueSizeValue (que));
