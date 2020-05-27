@@ -23,6 +23,8 @@
 
 #include <stdint.h>
 #include <queue>
+#include <iostream>
+#include <fstream>
 
 #include "ns3/traced-value.h"
 #include "ns3/tcp-socket.h"
@@ -1374,7 +1376,10 @@ protected:
   bool m_receivingBbr                      {false};
   Time m_ackPeriod                   {Seconds (0)};
   std::string m_modelName                     {""};
+  std::string m_csvFileName                   {""};
+  std::ofstream m_csvFile;
   torch::jit::script::Module *m_net      {nullptr};
+
 
 public:
 
@@ -1405,6 +1410,8 @@ public:
   uint32_t GetMaxPacketRecords () const;
   size_t GetNumPendingAcks () const;
   bool GetReceivingBbr () const;
+  void SetCsvFileName (std::string csvFileName);
+  std::string GetCsvFileName () const;
 };
 
 /**

@@ -26,6 +26,8 @@
 #include <math.h>
 #include <regex>
 #include <unordered_set>
+#include <iostream>
+#include <fstream>
 
 #include "ns3/abort.h"
 #include "ns3/node.h"
@@ -142,7 +144,7 @@ TcpSocketBase::GetTypeId (void)
                    MakeBooleanAccessor (&TcpSocketBase::m_limitedTx),
                    MakeBooleanChecker ())
     .AddAttribute ("UnfairMitigationEnable",
-                   "Whether to enable unfiarness mitigation",
+                   "Whether to enable unfairness mitigation",
                    BooleanValue (false),
                    MakeBooleanAccessor (&TcpSocketBase::SetUnfairEnable,
                                         &TcpSocketBase::GetUnfairEnable),
@@ -177,6 +179,10 @@ TcpSocketBase::GetTypeId (void)
                    MakeUintegerAccessor (&TcpSocketBase::SetMaxPacketRecords,
                                          &TcpSocketBase::GetMaxPacketRecords),
                    MakeUintegerChecker<uint64_t> ())
+    .AddAttribute ("CsvFileName", "Filename of the csv log file", StringValue (""),
+                  MakeStringAccessor (&TcpSocketBase::SetCsvFileName,
+                                      &TcpSocketBase::GetCsvFileName),
+                  MakeStringChecker ())
     .AddTraceSource ("RTO",
                      "Retransmission timeout",
                      MakeTraceSourceAccessor (&TcpSocketBase::m_rto),
@@ -436,6 +442,7 @@ TcpSocketBase::TcpSocketBase (const TcpSocketBase& sock)
     m_receivingBbr (sock.m_receivingBbr),
     m_ackPeriod (sock.m_ackPeriod),
     m_modelName (sock.m_modelName),
+    m_csvFileName (sock.m_csvFileName),
     m_net (sock.m_net)
     // Don't copy pendingAcks - don't want duplciate acks
     // Don't copy m_lossCounts and m_arrivalTimes because we want to reset those
@@ -530,6 +537,12 @@ TcpSocketBase::~TcpSocketBase (void)
       NS_ASSERT (m_endPoint6 == nullptr);
     }
   m_tcp = 0;
+
+  // Close csv file
+  if (m_csvFile.is_open ()) {
+    m_csvFile.close ();
+  }
+
   CancelAllTimers ();
   sockets.erase (this);
 }
@@ -4144,6 +4157,19 @@ TcpSocketBase::Unfair (Ptr<Packet> p, SequenceNumber32 seq) {
   // Store the timestamp of receiving this packet
   m_arrivalTimes.push_back (Simulator::Now ());
 
+  // Initialize csv File
+  if (!m_csvFile.is_open () && !m_csvFileName.empty ()) {
+    m_csvFile.open (m_csvFileName);
+
+    // The first row of m_csvFile will be treated as column Id 
+    // when the file is read into numpy array
+
+    m_csvFile << "Seq" << ","               // Sequence number
+              << "Sent_ms" << ","           // Sent time in milliseconds
+              << "Received_ms" << "\n";     // Received time milliseconds
+  }
+
+
   // TODO: Use different RTT estimate here.
   Time rtt = m_rtt->GetEstimate ();
   double fairTput = 0;
@@ -4155,6 +4181,13 @@ TcpSocketBase::Unfair (Ptr<Packet> p, SequenceNumber32 seq) {
     default:
       fairTput = EstimateFairShareCalc (p, seq, rtt);
     }
+
+  // Write to csv file
+  if (m_csvFile.is_open ()) {
+    m_csvFile << seq << ","                                    // Sequence number
+              << tag.sndTime.GetMilliSeconds() << ","          // Sent time
+              << Simulator::Now().GetMilliSeconds() << "\n";   // Received time
+  }
 
   // If unfariness mitigation is disabled or the warmup time has not passed,
   // then abort. Perform this check after computing the fair share so that any
@@ -4701,6 +4734,12 @@ void
 TcpSocketBase::SetModel (std::string modelFlp)
 {
   NS_LOG_FUNCTION (this << modelFlp);
+
+  // No need to parse model file if no file path is given
+  if (modelFlp.empty ()) {
+    return;
+  }
+
   // Assume that the filename (without the extension) is the name of the model.
   size_t lastSlash = modelFlp.find_last_of ("/");
   size_t lastDot = modelFlp.find_last_of (".");
@@ -4727,6 +4766,20 @@ TcpSocketBase::GetModel () const
 {
   NS_LOG_FUNCTION (this);
   return m_modelName;
+}
+
+void
+TcpSocketBase::SetCsvFileName (std::string csvFileName) 
+{
+  NS_LOG_FUNCTION (this << csvFileName);
+  m_csvFileName = csvFileName;
+}
+
+std::string
+TcpSocketBase::GetCsvFileName () const
+{
+  NS_LOG_FUNCTION (this);
+  return m_csvFileName;
 }
 
 void

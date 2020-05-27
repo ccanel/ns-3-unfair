@@ -30,16 +30,17 @@
 using namespace ns3;
 
 // Constants.
-#define ENABLE_TRACE     false  // Set to "true" to enable trace
-#define START_TIME       0.0    // Seconds
-#define S_PORT           911    // Well-known port for server
-#define PACKET_SIZE      1380   // Bytes; Assumes 60 bytes for the IP header
-                                // (20 bytes + up to 40 bytes for options)
-                                // and a maximum of 60 bytes for the TCP
-                                // header (20 bytes + up to 40 bytes for
-                                // options).
-#define MTU              1500   // Bytes
-#define PCAP_LEN         200    // Bytes
+#define ENABLE_TRACE       false  // Set to "true" to enable trace
+#define START_TIME         0.0    // Seconds
+#define S_PORT             911    // Well-known port for server
+#define PACKET_SIZE        1380   // Bytes; Assumes 60 bytes for the IP header
+                                  // (20 bytes + up to 40 bytes for options)
+                                  // and a maximum of 60 bytes for the TCP
+                                  // header (20 bytes + up to 40 bytes for
+                                  // options).
+#define MTU                1500   // Bytes
+#define HEADER_AND_OPTION  120    // Bytes
+#define PCAP_LEN           200    // Bytes
 
 #define TCP_PROTOCOL     "ns3::TcpBbr"
 // #define TCP_PROTOCOL     "ns3::TcpNewReno"
@@ -55,14 +56,14 @@ extern bool useReno;
 
 
 Ptr<PacketSink> CreateFlow(uint16_t port, Ipv4InterfaceContainer i1i2,
-                           NodeContainer nodes, double durS, uint32_t recalcUs)
+                           NodeContainer nodes, double durS, uint32_t packet_size)
 {
   // Source (at node 0).
   BulkSendHelper src ("ns3::TcpSocketFactory",
                       InetSocketAddress (i1i2.GetAddress (1), port));
   // Set the amount of data to send in bytes (0 for unlimited).
   src.SetAttribute ("MaxBytes", UintegerValue (0));
-  src.SetAttribute ("SendSize", UintegerValue (PACKET_SIZE));
+  src.SetAttribute ("SendSize", UintegerValue (packet_size));
   ApplicationContainer srcApp = src.Install (nodes.Get (0));
   srcApp.Start (Seconds (START_TIME));
   srcApp.Stop (Seconds (START_TIME + durS));
@@ -101,10 +102,13 @@ int main (int argc, char *argv[])
   double bwMbps = 10;
   double delUs = 5000;
   uint32_t queP = 1000;
+  uint32_t packet_size = PACKET_SIZE;
+  uint32_t mtu = MTU;
   double durS = 20;
   uint32_t recalcUs = 1<<30;
   double warmupS = 5;
   bool pcap = false;
+  bool csv = false;
   std::string modelFlp = "";
   std::string outDir = ".";
   std::string scaleParamsFlp = "";
@@ -118,10 +122,12 @@ int main (int argc, char *argv[])
   cmd.AddValue ("bandwidth_Mbps", "Bandwidth for both links (Mbps).", bwMbps);
   cmd.AddValue ("delay_us", "Link delay (us). RTT is 4x this value.", delUs);
   cmd.AddValue ("queue_capacity_p", "Router queue size (packets).", queP);
+  cmd.AddValue ("packet_size", "Size of a single packet (bytes)", packet_size);
   cmd.AddValue ("experiment_duration_s", "Simulation duration (s).", durS);
   cmd.AddValue ("recalc_us", "Between recalculating ACK delay (us)", recalcUs);
   cmd.AddValue ("warmup_s", "Time before delaying ACKs (s)", warmupS);
   cmd.AddValue ("pcap", "Record a pcap trace from each port (true or false).", pcap);
+  cmd.AddValue ("csv", "Record a csv file for BBR receiver (true or false).", csv);
   cmd.AddValue ("model", "Path to the model file.", modelFlp);
   cmd.AddValue ("out_dir", "Directory in which to store output files.", outDir);
   cmd.AddValue ("scale_params", "Path to a CSV file containing scaling parameters.", scaleParamsFlp);
@@ -149,6 +155,8 @@ int main (int argc, char *argv[])
   sndSS << routerToDeviceBW << "Mbps";
   std::string routerToDeviceBWStr = sndSS.str ();
 
+  mtu = packet_size + HEADER_AND_OPTION;
+
   /////////////////////////////////////////
   // Turn on logging and report parameters.
   // Note: For BBR', other components that may be of interest include "TcpBbr"
@@ -162,7 +170,7 @@ int main (int argc, char *argv[])
                "Router to Client Bandwidth (Mbps): " << bwMbps << "\n" <<
                "Router to Client Delay (us): " << delUs << "\n" <<
                "RTT (us): " << rttUs << "\n" <<
-               "Packet size (bytes): " << PACKET_SIZE << "\n" <<
+               "Packet size (bytes): " << packet_size << "\n" <<
                "Router queue size (packets): "<< queP << "\n" <<
                "Warmup (s): " << warmupS << "\n" <<
                "Duration (s): " << durS << "\n" <<
@@ -180,7 +188,7 @@ int main (int argc, char *argv[])
                       StringValue (TCP_PROTOCOL));
   // Set the segment size (otherwise, ns-3's default is 536).
   Config::SetDefault ("ns3::TcpSocket::SegmentSize",
-                      UintegerValue (PACKET_SIZE));
+                      UintegerValue (packet_size));
   // Turn off delayed ACKs (so that every packet results in an ACK).
   // Note: BBR still works without this.
   Config::SetDefault ("ns3::TcpSocket::DelAckCount", UintegerValue (0));
@@ -225,13 +233,13 @@ int main (int argc, char *argv[])
   PointToPointHelper p2p (PCAP_LEN);
   p2p.SetDeviceAttribute ("DataRate", StringValue ("10Gbps"));
   p2p.SetChannelAttribute ("Delay", StringValue (del));
-  p2p.SetDeviceAttribute ("Mtu", UintegerValue (MTU));
+  p2p.SetDeviceAttribute ("Mtu", UintegerValue (mtu));
   NetDeviceContainer devices1 = p2p.Install (n0Ton1);
 
   // Router to Client.
   p2p.SetDeviceAttribute ("DataRate", StringValue (routerToDeviceBWStr));
   p2p.SetChannelAttribute ("Delay", StringValue (del));
-  p2p.SetDeviceAttribute ("Mtu", UintegerValue (MTU));
+  p2p.SetDeviceAttribute ("Mtu", UintegerValue (mtu));
   p2p.SetQueue ("ns3::DropTailQueue", "MaxSize", QueueSizeValue (que));
   NetDeviceContainer devices2 = p2p.Install (n1Ton2);
 
@@ -258,16 +266,26 @@ int main (int argc, char *argv[])
   NS_LOG_INFO ("Creating flows.");
   uint32_t port = 101;
   for (uint32_t i = 0; i < unfairFlows + otherFlows; ++i) {
-    sinks.push_back (CreateFlow (port + i, i1i2, nodes, durS, recalcUs));
+    sinks.push_back (CreateFlow (port + i, i1i2, nodes, durS, packet_size));
   }
 
   /////////////////////////////////////////
   // Setup tracing (as appropriate).
   NS_LOG_INFO ("Configuring tracing.");
   std::stringstream detailsSs;
-  // detailsSs << ackPeriod << "us-" << delayToAckDelay << "s-" << bw << "-"
-  //            << rttUs << "us-" << durS << "s";
+  detailsSs << bw << "-" << 
+               rttUs << "us-" << 
+               queP << "p-" << 
+               durS << "s-" << 
+               packet_size << "B-" <<
+               (otherFlows + unfairFlows);
   std::string details = detailsSs.str ();
+
+  if (csv) {
+    Config::SetDefault ("ns3::TcpSocketBase::CsvFileName", 
+                      StringValue (outDir + "/" + details + ".csv"));
+  }
+
 
   if (ENABLE_TRACE) {
     NS_LOG_INFO ("Enabling trace files.");

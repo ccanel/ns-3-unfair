@@ -33,8 +33,12 @@ ACK_PERIOD_MAX_us = 6_000  # 1 RTT ≈ 4_000
 ACK_PERIOD_DELTA_us = 50
 ACK_PERIODS_us = list(range(
     ACK_PERIOD_MIN_us, ACK_PERIOD_MAX_us + 1, ACK_PERIOD_DELTA_us))
-# Router queue size (packets).
-QUEUE = 100
+# Packet size (bytes)
+PACKET_SIZE = 1380
+# Router queue size (BDP).
+QUEUE_p = list(range(1, 21)) # 1 to 20 BDP
+# Number of other flows
+OTHER_FLOWS = list(range(4, 9)) # 4 to 8 non BBR flows
 # Simulation duration (s).
 DUR_s = 20
 # Delay until ACK pacing begins.
@@ -42,7 +46,9 @@ WARMUP_s = 5
 # Whether to return before running experiments.
 DRY_RUN = False
 # Whether to capture pcap traces.
-PCAP = True
+PCAP = False
+# Whether to capture csv files.
+CSV = True
 # Whether to run the simulations synchronously or in parallel.
 SYNC = False
 # Path to the ns-3 top-level directory.
@@ -58,7 +64,7 @@ EMAIL_DST = "c.canel@icloud.com"
 
 
 def check_output(cnf):
-    args = ([path.join(NS3_DIR, "build", "scratch", "ai"),] +
+    args = ([path.join(NS3_DIR, "build", "scratch", "ai-multi-flow"),] +
             [f"--{arg}={val}" for arg, val in cnf.items()])
     cmd = f"LD_LIBRARY_PATH={os.environ['LD_LIBRARY_PATH']} {' '.join(args)}"
     print(f"Running: {cmd}")
@@ -139,13 +145,19 @@ def main():
         f"/usr/lib/gcc/x86_64-linux-gnu/7:{path.join(NS3_DIR, 'build')}")
 
     # Assemble the configurations.
-    cnfs = [{"bandwidth_Mbps": bw_Mbps, "delay_us": dly_us,
-             "queue_capacity_p": QUEUE, "experiment_duration_s": DUR_s,
-             "ack_period_us": per_us, "warmup_s": WARMUP_s,
-             "pcap": "true" if PCAP else "false", "out_dir": sim_dir}
+    cnfs = [{"bandwidth_Mbps": bw_Mbps, 
+             "delay_us": dly_us,
+             "queue_capacity_p": queue_p * int((bw_Mbps / 8.0) * (dly_us * 4) / float(PACKET_SIZE)), 
+             "experiment_duration_s": DUR_s,
+             "other_flows": other_flows,
+             "pcap": "true" if PCAP else "false",
+             "csv": "true" if CSV else "false", 
+             "packet_size": PACKET_SIZE,
+             "out_dir": sim_dir}
             for bw_Mbps in BWS_Mbps
             for dly_us in DELAYS_us
-            for per_us in ACK_PERIODS_us]
+            for queue_p in QUEUE_p
+            for other_flows in OTHER_FLOWS]
     # Record the configurations.
     with open(path.join(out_dir, "configurations.json"), "w") as fil:
         json.dump(cnfs, fil, indent=4)
@@ -163,6 +175,8 @@ def main():
     print(f"Done with simulation - time: {time.time() - tim_srt_s:.2f} seconds")
     data = list(zip(cnfs, data))
 
+    # TODO: what to graph here?
+    """
     # Graphs results. Generate an achieved throughput vs. ack period graph for
     # each configuration of bandwidth and delay.
     #
@@ -172,24 +186,26 @@ def main():
     # case we filtered the configurations and did not run all experiments.
     for bw_Mbps in get_all("bandwidth_Mbps"):
         for dly_us in get_all("delay_us"):
-            # Select only the results with this bandwidth and delay, and pick
-            # the value of the ACK period as the x value. Then, split the (x, y)
-            # pairs into a list of xs and a list of ys.
-            xs, ys = zip(*[(cnf["ack_period_us"], results)
-                           for cnf, results in data
-                           if (cnf["bandwidth_Mbps"] == bw_Mbps and
-                               cnf["delay_us"] == dly_us)])
-            # Convert from us to ms.
-            xs = np.array(xs) / 1e3
-            plt.plot(xs, ys)
-            plt.xlabel("ACK delay (ms)")
-            plt.ylabel("Average throughput (Mb/s)")
-            plt.ylim(bottom=0, top=bw_Mbps)
-            plt.savefig(path.join(
-                out_dir,
-                f"{bw_Mbps}Mbps_{dly_us}us_{QUEUE}packets_{DUR_s}s.pdf"))
-            plt.close()
-
+            for queue_p in get_all("queue_capacity_p"):
+                # Select only the results with this bandwidth and delay, and pick
+                # the value of the ACK period as the x value. Then, split the (x, y)
+                # pairs into a list of xs and a list of ys.
+                xs, ys = zip(*[(cnf["ack_period_us"], results)
+                               for cnf, results in data
+                               if (cnf["bandwidth_Mbps"] == bw_Mbps and
+                                   cnf["delay_us"] == dly_us and 
+                                   cnf["queue_capacity_p"] == queue_p)])
+                # Convert from us to ms.
+                xs = np.array(xs) / 1e3
+                plt.plot(xs, ys)
+                plt.xlabel("ACK delay (ms)")
+                plt.ylabel("Average throughput (Mb/s)")
+                plt.ylim(bottom=0, top=bw_Mbps)
+                plt.savefig(path.join(
+                    out_dir,
+                    f"{bw_Mbps}Mbps_{dly_us}us_{queue_p}packets_{DUR_s}s.pdf"))
+                plt.close()
+    """
     print(f"Results in: {out_dir}")
     log.critical("Finished.")
 
