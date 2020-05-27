@@ -42,10 +42,6 @@ using namespace ns3;
 #define HEADER_AND_OPTION  120    // Bytes
 #define PCAP_LEN           200    // Bytes
 
-#define TCP_PROTOCOL     "ns3::TcpBbr"
-// #define TCP_PROTOCOL     "ns3::TcpNewReno"
-// #define TCP_PROTOCOL     "ns3::TcpCubic"
-
 // For logging.
 NS_LOG_COMPONENT_DEFINE ("main");
 
@@ -114,6 +110,7 @@ int main (int argc, char *argv[])
   std::string scaleParamsFlp = "";
   uint32_t unfairFlows = 1;
   uint32_t otherFlows = 0;
+  std::string otherProto = "ns3::TcpNewReno";
   bool enableUnfair = false;
   std::string fairShareType = "Mathis";
   std::string ackPacingType = "Calc";
@@ -132,12 +129,17 @@ int main (int argc, char *argv[])
   cmd.AddValue ("out_dir", "Directory in which to store output files.", outDir);
   cmd.AddValue ("scale_params", "Path to a CSV file containing scaling parameters.", scaleParamsFlp);
   cmd.AddValue ("unfair_flows", "Number of BBR flows.", unfairFlows);
-  cmd.AddValue ("other_flows", "Number of non BBR flows.", otherFlows);
-  cmd.AddValue ("use_reno", "Use Reno (else Cubic).", useReno);
-  cmd.AddValue ("enable", "Enable unfairness mitigation.", enableUnfair);
+  cmd.AddValue ("other_flows", "Number of non-BBR flows.", otherFlows);
+  cmd.AddValue ("other_proto", "The TCP variant to use (e.g., \"ns3::TcpCubic\") for the non-BBR flows.", otherProto);
+  cmd.AddValue ("enable", "Enable unfairness mitigation (true or false).", enableUnfair);
   cmd.AddValue ("fair_share_type", "How to estimate the bandwidth fair share.", fairShareType);
   cmd.AddValue ("ack_pacing_type", "How to estimate ACK pacing interval.", ackPacingType);
   cmd.Parse (argc, argv);
+
+  // Verify the protofol specified for the non-BBR flows.
+  NS_ABORT_UNLESS (otherProto == "ns3::TcpNewReno" ||
+                   otherProto == "ns3::TcpCubic" ||
+                   otherProto == "ns3::TcpBbr");
 
   uint32_t rttUs = delUs * 4;
   std::stringstream bwSs;
@@ -164,7 +166,6 @@ int main (int argc, char *argv[])
   LogComponentEnable ("main", LOG_LEVEL_INFO);
 
   NS_LOG_INFO ("\n" <<
-               "TCP protocol: " << TCP_PROTOCOL << "\n" <<
                "Server to Router Bandwidth (Mbps): " << bwMbps << "\n" <<
                "Server to Router Delay (us): " << delUs << "\n" <<
                "Router to Client Bandwidth (Mbps): " << bwMbps << "\n" <<
@@ -174,6 +175,9 @@ int main (int argc, char *argv[])
                "Router queue size (packets): "<< queP << "\n" <<
                "Warmup (s): " << warmupS << "\n" <<
                "Duration (s): " << durS << "\n" <<
+               "BBR flows: " << unfairFlows << "\n" <<
+               "Non-BBR flows: " << otherFlows << "\n" <<
+               "Non-BBR protocol: " << otherProto << "\n" <<
                "Fair share estimation type: " << fairShareType << "\n" <<
                "ACK pacing estimation type: " << ackPacingType << "\n" <<
                "model: " << modelFlp << "\n");
@@ -184,8 +188,10 @@ int main (int argc, char *argv[])
   ConfigStore config;
   config.ConfigureDefaults ();
   // Select which TCP variant to use.
-  Config::SetDefault ("ns3::TcpL4Protocol::SocketType",
-                      StringValue (TCP_PROTOCOL));
+  Config::SetDefault ("ns3::TcpL4Protocol::SocketType", StringValue (otherProto));
+  // Configure the number of TcpBbr flows.
+  Config::SetDefault ("ns3::TcpL4Protocol::NumUnfair",
+                      UintegerValue (unfairFlows));
   // Set the segment size (otherwise, ns-3's default is 536).
   Config::SetDefault ("ns3::TcpSocket::SegmentSize",
                       UintegerValue (packet_size));
