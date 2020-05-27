@@ -279,8 +279,8 @@ int main (int argc, char *argv[])
     queP << "p-" <<
     unfairFlows << "unfair-" <<
     otherFlows << "other-" <<
-    packet_size << "B" <<
-    durS << "s-";
+    packet_size << "B-" <<
+    durS << "s";
   std::string details = detailsSs.str ();
 
   if (csv) {
