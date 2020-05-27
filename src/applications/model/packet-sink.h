@@ -27,8 +27,6 @@
 #include "ns3/traced-callback.h"
 #include "ns3/address.h"
 
-#include <deque>
-
 namespace ns3 {
 
 class Address;
@@ -93,20 +91,10 @@ public:
    * \return list of pointers to accepted sockets
    */
   std::list<Ptr<Socket> > GetAcceptedSockets (void) const;
- 
-  struct BbrStats {
-      double tputMbps;
-      Time avgLat;
-  };
 
-  // (MB/s, avg latency
-  // Relies on the PacketSink accepting as much data from the Socket as possible
-  //    or else the packets might be split, leading to the appearance duplicate 
-  //    of duplicate packets
-  BbrStats getBbrStats () const;
-  bool recvBbr() const { return m_recvBbr; }
-  uint64_t GetTotalBbrPackets() const { return m_totalBbrPackets; }
-  std::list<Ptr<Socket>>& getSockets() { return m_socketList; }
+  // ACK pacing
+
+  std::list<Ptr<Socket>>& GetSockets ();
 
 protected:
   virtual void DoDispose (void);
@@ -148,24 +136,8 @@ private:
 
   /// Traced Callback: received packets, source address.
   TracedCallback<Ptr<const Packet>, const Address &> m_rxTrace;
-
-  uint32_t m_maxBbrRecords;
-  struct BbrRecord {
-      Time sendTime;
-      Time recvTime;
-      uint64_t bytes;
-  };
-  std::deque<BbrRecord> m_bbrRecords;
-  uint64_t m_totalBbrPackets = 0;
-  bool m_recvBbr = false;
-
-  void updateBbrRecord(Ptr<Packet>& packet);
-  void SetMaxBbrRecords(uint32_t m) { m_maxBbrRecords = m; }
-  uint32_t GetMaxBbrRecords () const { return m_maxBbrRecords; }
-
 };
 
 } // namespace ns3
 
 #endif /* PACKET_SINK_H */
-

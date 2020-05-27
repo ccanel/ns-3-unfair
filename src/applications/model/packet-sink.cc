@@ -32,9 +32,6 @@
 #include "ns3/udp-socket-factory.h"
 #include "packet-sink.h"
 
-#include "ns3/bbr-tag.h"
-#include <cassert>
-
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE ("PacketSink");
@@ -58,13 +55,6 @@ PacketSink::GetTypeId (void)
                    TypeIdValue (UdpSocketFactory::GetTypeId ()),
                    MakeTypeIdAccessor (&PacketSink::m_tid),
                    MakeTypeIdChecker ())
-    .AddAttribute ("maxBbrRecords",
-                     "Number of BBR packet records to use to estimate throughput",
-                     UintegerValue (1000),
-                     MakeUintegerAccessor (
-                        &PacketSink::SetMaxBbrRecords,
-                        &PacketSink::GetMaxBbrRecords),
-                     MakeUintegerChecker<uint64_t> ())
     .AddTraceSource ("Rx",
                      "A packet has been received",
                      MakeTraceSourceAccessor (&PacketSink::m_rxTrace),
@@ -182,7 +172,6 @@ void PacketSink::HandleRead (Ptr<Socket> socket)
           break;
         }
       m_totalRx += packet->GetSize ();
-      updateBbrRecord(packet);
       if (InetSocketAddress::IsMatchingType (from))
         {
           NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds ()
@@ -205,41 +194,6 @@ void PacketSink::HandleRead (Ptr<Socket> socket)
     }
 }
 
-void PacketSink::updateBbrRecord(Ptr<Packet>& packet) {
-
-    BbrTag tag;
-    auto good = packet->FindFirstMatchingByteTag(tag);
-    assert(good);
-    m_recvBbr = tag.isBbr;
-
-    ++m_totalBbrPackets;
-    m_bbrRecords.push_back({tag.sendTime, Simulator::Now (), packet->GetSize ()});
-    if (m_bbrRecords.size () > m_maxBbrRecords) {
-        m_bbrRecords.pop_front();
-        assert(m_bbrRecords.size () == m_maxBbrRecords);
-    }
-}
-
-PacketSink::BbrStats PacketSink::getBbrStats () const {
-    assert(!m_bbrRecords.empty());
-
-    auto lat = Seconds (0);
-    uint64_t bytes = 0;
-    for (auto& record : m_bbrRecords) {
-        lat += record.recvTime - record.sendTime;
-        bytes += record.bytes; 
-    }
-
-    auto avgLat = Seconds (lat.GetSeconds() / m_bbrRecords.size());
-
-    auto epoch = Simulator::Now () - m_bbrRecords.front ().sendTime;
-    auto tput = bytes / epoch.GetSeconds();
-    tput *= 8;          // Convert to bits.
-    tput /= 1e6;  // Convert to Mb/s
-
-    return {tput, avgLat};
-}
-
 void PacketSink::HandlePeerClose (Ptr<Socket> socket)
 {
   NS_LOG_FUNCTION (this << socket);
@@ -256,6 +210,15 @@ void PacketSink::HandleAccept (Ptr<Socket> s, const Address& from)
   NS_LOG_FUNCTION (this << s << from);
   s->SetRecvCallback (MakeCallback (&PacketSink::HandleRead, this));
   m_socketList.push_back (s);
+}
+
+// ACK pacing
+
+std::list<Ptr<Socket>>&
+PacketSink::GetSockets ()
+{
+  NS_LOG_FUNCTION (this);
+  return m_socketList;
 }
 
 } // Namespace ns3
