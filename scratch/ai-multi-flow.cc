@@ -284,7 +284,7 @@ int main (int argc, char *argv[])
   std::string details = detailsSs.str ();
 
   if (csv) {
-    Config::SetDefault ("ns3::TcpSocketBase::CsvFileName", 
+    Config::SetDefault ("ns3::TcpSocketBase::CsvFileName",
                       StringValue (outDir + "/" + details + ".csv"));
   }
 
