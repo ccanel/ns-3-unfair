@@ -91,7 +91,11 @@ public:
    * \return list of pointers to accepted sockets
    */
   std::list<Ptr<Socket> > GetAcceptedSockets (void) const;
- 
+
+  // ACK pacing
+
+  std::list<Ptr<Socket>>& GetSockets ();
+
 protected:
   virtual void DoDispose (void);
 private:
@@ -132,10 +136,8 @@ private:
 
   /// Traced Callback: received packets, source address.
   TracedCallback<Ptr<const Packet>, const Address &> m_rxTrace;
-
 };
 
 } // namespace ns3
 
 #endif /* PACKET_SINK_H */
-

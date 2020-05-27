@@ -48,6 +48,8 @@
 #include <sstream>
 #include <iomanip>
 
+bool useReno = false;
+
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE ("TcpL4Protocol");
@@ -199,10 +201,14 @@ TcpL4Protocol::CreateSocket (TypeId congestionTypeId)
 Ptr<Socket>
 TcpL4Protocol::CreateSocket (void)
 {
-  // return CreateSocket (m_congestionTypeId);
+  // Not a good way to initialize one BBR flow and other Cubic flows
   TypeId type_id = TypeId::LookupByName("ns3::TcpBbr");
-  if (m_count >= 1) {
-    type_id = TypeId::LookupByName("ns3::TcpNewReno");
+  if (m_count >= 3) {
+    if (useReno) {
+        type_id = TypeId::LookupByName("ns3::TcpNewReno");
+    } else {
+        type_id = TypeId::LookupByName("ns3::TcpCubic");
+    }
   }
   m_congestionTypeId = type_id;
   m_count++;

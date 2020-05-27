@@ -194,7 +194,6 @@ void PacketSink::HandleRead (Ptr<Socket> socket)
     }
 }
 
-
 void PacketSink::HandlePeerClose (Ptr<Socket> socket)
 {
   NS_LOG_FUNCTION (this << socket);
@@ -211,6 +210,15 @@ void PacketSink::HandleAccept (Ptr<Socket> s, const Address& from)
   NS_LOG_FUNCTION (this << s << from);
   s->SetRecvCallback (MakeCallback (&PacketSink::HandleRead, this));
   m_socketList.push_back (s);
+}
+
+// ACK pacing
+
+std::list<Ptr<Socket>>&
+PacketSink::GetSockets ()
+{
+  NS_LOG_FUNCTION (this);
+  return m_socketList;
 }
 
 } // Namespace ns3

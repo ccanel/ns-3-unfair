@@ -11,6 +11,7 @@ import re
 import shlex
 import subprocess
 import textwrap
+from glob import glob
 
 from utils import read_config_file
 
@@ -722,6 +723,15 @@ def create_ns3_program(bld, name, dependencies=('core',)):
     program.ns3_module_dependencies = ['ns3-'+dep for dep in dependencies]
     program.includes = "#"
     program.use = program.ns3_module_dependencies
+
+    # Add libtorch.
+    program.env.append_value('CPPFLAGS', '-I/opt/libtorch/include')
+    program.env.append_value('LINKFLAGS', '-L/opt/libtorch/lib')
+    for path in glob('/opt/libtorch/lib/lib*.so'):
+        lib = os.path.basename(path)[3:-3]
+        if lib == "torch_python": continue
+        program.env.append_value('LIB', lib)
+
     if program.env['ENABLE_STATIC_NS3']:
         if sys.platform == 'darwin':
             program.env.STLIB_MARKER = '-Wl,-all_load'
@@ -866,6 +876,10 @@ def build(bld):
     # Clean documentation build directories; other cleaning happens later
     if bld.cmd == 'clean':
         _cleandocs()
+
+    # Add libtorch.
+    bld.env.append_value('CPPFLAGS', '-I/opt/libtorch/include')
+    bld.env.append_value('LINKFLAGS', '-L/opt/libtorch/lib')
 
     # process subfolders from here
     bld.recurse('src')

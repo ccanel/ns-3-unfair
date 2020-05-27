@@ -38,7 +38,7 @@ namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE ("PointToPointHelper");
 
-PointToPointHelper::PointToPointHelper ()
+PointToPointHelper::PointToPointHelper (uint32_t _snapLen) : snapLen(_snapLen)
 {
   m_queueFactory.SetTypeId ("ns3::DropTailQueue<Packet>");
   m_deviceFactory.SetTypeId ("ns3::PointToPointNetDevice");
@@ -103,7 +103,7 @@ PointToPointHelper::EnablePcapInternal (std::string prefix, Ptr<NetDevice> nd, b
     }
 
   Ptr<PcapFileWrapper> file = pcapHelper.CreateFile (filename, std::ios::out, 
-                                                     PcapHelper::DLT_PPP);
+                                                     PcapHelper::DLT_PPP, snapLen);
   pcapHelper.HookDefaultSink<PointToPointNetDevice> (device, "PromiscSniffer", file);
 }
 
@@ -232,12 +232,19 @@ PointToPointHelper::Install (Ptr<Node> a, Ptr<Node> b)
   devA->SetAddress (Mac48Address::Allocate ());
   a->AddDevice (devA);
   Ptr<Queue<Packet> > queueA = m_queueFactory.Create<Queue<Packet> > ();
+
+  // std::cout << "\n\nHERE\n\n";
+  // queueA->SetAttribute("MaxPackets", UintegerValue (1));
+
   devA->SetQueue (queueA);
   Ptr<PointToPointNetDevice> devB = m_deviceFactory.Create<PointToPointNetDevice> ();
   devB->SetAddress (Mac48Address::Allocate ());
   b->AddDevice (devB);
   Ptr<Queue<Packet> > queueB = m_queueFactory.Create<Queue<Packet> > ();
   devB->SetQueue (queueB);
+
+  // queueB->SetAttribute("MaxPackets", UintegerValue (1));
+
   // If MPI is enabled, we need to see if both nodes have the same system id 
   // (rank), and the rank is the same as this instance.  If both are true, 
   //use a normal p2p channel, otherwise use a remote channel

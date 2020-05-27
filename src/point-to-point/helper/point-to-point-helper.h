@@ -48,7 +48,7 @@ public:
    * Create a PointToPointHelper to make life easier when creating point to
    * point networks.
    */
-  PointToPointHelper ();
+  PointToPointHelper (uint32_t snapLen=std::numeric_limits<uint32_t>::max());
   virtual ~PointToPointHelper () {}
 
   /**
@@ -185,6 +185,7 @@ private:
   ObjectFactory m_channelFactory;       //!< Channel Factory
   ObjectFactory m_remoteChannelFactory; //!< Remote Channel Factory
   ObjectFactory m_deviceFactory;        //!< Device Factory
+  uint32_t snapLen;
 };
 
 } // namespace ns3

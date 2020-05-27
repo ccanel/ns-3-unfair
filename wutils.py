@@ -106,6 +106,7 @@ def get_proc_env(os_env=None):
     else:
         proc_env['PATH'] = os.pathsep.join(list(env['NS3_EXECUTABLE_PATH']))
 
+    proc_env[pathvar] += ":/opt/libtorch/lib"
     return proc_env
 
 def run_argv(argv, env, os_env=None, cwd=None, force_no_valgrind=False):
