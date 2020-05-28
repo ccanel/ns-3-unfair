@@ -309,7 +309,8 @@ private:
   std::vector<Ptr<TcpSocketBase> > m_sockets;      //!< list of sockets
   IpL4Protocol::DownTargetCallback m_downTarget;   //!< Callback to send packets over IPv4
   IpL4Protocol::DownTargetCallback6 m_downTarget6; //!< Callback to send packets over IPv6
-  int m_count = 0;                //!< Counter to create different congestion control types
+  uint32_t m_count     {0};        //!< Counter to create different congestion control types
+  uint32_t m_numUnfair {0};        //!< Number of TcpBbr flows to create.
 
   /**
    * \brief Copy constructor
