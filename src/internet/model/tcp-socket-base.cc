@@ -4537,7 +4537,7 @@ TcpSocketBase::FairShareEstimationType TcpSocketBase::StrToFairShareType (
     std::string str) const
 {
   NS_LOG_FUNCTION (this << str);
-  FairShareEstimationType type;
+  FairShareEstimationType type = FairShareEstimationType::Mathis; // Initialize type for compile issue
   if (str == "Mathis")
     {
       type = FairShareEstimationType::Mathis;
@@ -4584,7 +4584,7 @@ TcpSocketBase::AckPacingType TcpSocketBase::StrToAckPacingType (
     std::string str) const
 {
   NS_LOG_FUNCTION (this << str);
-  AckPacingType type;
+  AckPacingType type = AckPacingType::Calc; // Initialize AckPacingType for compile issue
   if (str == "Calc")
     {
       type = AckPacingType::Calc;
@@ -4652,6 +4652,7 @@ TcpSocketBase::GetAckPacingType () const
       break;
     default:
       NS_LOG_ERROR ("Invalid ACK pacing type!");
+      return "";
     }
   return type;
 }
