@@ -274,7 +274,7 @@ public:
    * \param addressIndex index of Ipv4InterfaceAddress 
    * \returns the Ipv4InterfaceAddress associated to the interface and addressIndex
    */
-  virtual Ipv4InterfaceAddress GetAddress (uint32_t interface, uint32_t addressIndex) const = 0;
+  virtual const Ipv4InterfaceAddress& GetAddress (uint32_t interface, uint32_t addressIndex) const = 0;
 
   /**
    * Remove the address at addressIndex on named interface.  The addressIndex

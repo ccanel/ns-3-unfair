@@ -190,7 +190,7 @@ public:
   bool IsDestinationAddress (Ipv4Address address, uint32_t iif) const;
 
   bool AddAddress (uint32_t i, Ipv4InterfaceAddress address);
-  Ipv4InterfaceAddress GetAddress (uint32_t interfaceIndex, uint32_t addressIndex) const;
+  const Ipv4InterfaceAddress& GetAddress (uint32_t interfaceIndex, uint32_t addressIndex) const;
   uint32_t GetNAddresses (uint32_t interface) const;
   bool RemoveAddress (uint32_t interfaceIndex, uint32_t addressIndex);
   bool RemoveAddress (uint32_t interface, Ipv4Address address);

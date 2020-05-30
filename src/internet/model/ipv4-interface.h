@@ -166,10 +166,10 @@ public:
    * \param index Index of Ipv4InterfaceAddress to return
    * \returns The Ipv4InterfaceAddress address whose index is i
    */
-  Ipv4InterfaceAddress GetAddress (uint32_t index) const;
+  const Ipv4InterfaceAddress& GetAddress (uint32_t index) const;
 
   /**
-   * \returns the number of Ipv4InterfaceAddresss stored on this interface
+   * \returns the number of Ipv4InterfaceAddress stored on this interface
    */
   uint32_t GetNAddresses (void) const;
 

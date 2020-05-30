@@ -324,6 +324,9 @@ public:
 
 private:
   uint32_t m_mask; //!< IP mask
+  uint16_t m_mask_bitlen; //!< IP mask prefix len
+
+  uint16_t ComputePrefixLength (void) const;
 };
 
 ATTRIBUTE_HELPER_HEADER (Ipv4Address);
