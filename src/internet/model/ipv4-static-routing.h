@@ -378,13 +378,13 @@ protected:
 
 private:
   /// Container for the network routes
-  typedef std::list<std::pair <Ipv4RoutingTableEntry *, uint32_t> > NetworkRoutes;
+  typedef std::vector<std::pair <Ipv4RoutingTableEntry *, uint32_t> > NetworkRoutes;
 
   /// Const Iterator for container for the network routes
-  typedef std::list<std::pair <Ipv4RoutingTableEntry *, uint32_t> >::const_iterator NetworkRoutesCI;
+  typedef std::vector<std::pair <Ipv4RoutingTableEntry *, uint32_t> >::const_iterator NetworkRoutesCI;
 
   /// Iterator for container for the network routes
-  typedef std::list<std::pair <Ipv4RoutingTableEntry *, uint32_t> >::iterator NetworkRoutesI;
+  typedef std::vector<std::pair <Ipv4RoutingTableEntry *, uint32_t> >::iterator NetworkRoutesI;
 
   /// Container for the multicast routes
   typedef std::list<Ipv4MulticastRoutingTableEntry *> MulticastRoutes;
@@ -417,6 +417,11 @@ private:
    * \brief the forwarding table for network.
    */
   NetworkRoutes m_networkRoutes;
+
+    /**
+    * \brief ip to rte of full ip addresses
+    */
+    std::map<uint32_t, Ipv4RoutingTableEntry *> m_host_routes;
 
   /**
    * \brief the forwarding table for multicast.

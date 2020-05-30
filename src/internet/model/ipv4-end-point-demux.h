@@ -22,6 +22,7 @@
 #define IPV4_END_POINT_DEMUX_H
 
 #include <stdint.h>
+#include <unordered_map>
 #include <list>
 #include "ns3/ipv4-address.h"
 #include "ipv4-interface.h"
@@ -192,6 +193,9 @@ private:
    * \brief A list of IPv4 end points.
    */
   EndPoints m_endPoints;
+
+    // PHILIP: part of our optimization to
+    std::unordered_map<uint16_t, EndPoints> m_portToEndpoints;
 };
 
 } // namespace ns3

@@ -96,7 +96,13 @@ Ipv4StaticRouting::AddHostRouteTo (Ipv4Address dest,
                                    uint32_t metric)
 {
   NS_LOG_FUNCTION (this << dest << " " << nextHop << " " << interface << " " << metric);
-  AddNetworkRouteTo (dest, Ipv4Mask::GetOnes (), nextHop, interface, metric);
+//  AddNetworkRouteTo (dest, Ipv4Mask::GetOnes (), nextHop, interface, metric);
+    Ipv4RoutingTableEntry *route = new Ipv4RoutingTableEntry ();
+    *route = Ipv4RoutingTableEntry::CreateNetworkRouteTo (dest,
+                                                          Ipv4Mask::GetOnes (),
+                                                          nextHop,
+                                                          interface);
+    m_host_routes.insert(std::pair<uint32_t, Ipv4RoutingTableEntry *>(dest.Get(), route));
 }
 
 void 
@@ -105,7 +111,12 @@ Ipv4StaticRouting::AddHostRouteTo (Ipv4Address dest,
                                    uint32_t metric)
 {
   NS_LOG_FUNCTION (this << dest << " " << interface << " " << metric);
-  AddNetworkRouteTo (dest, Ipv4Mask::GetOnes (), interface, metric);
+//  AddNetworkRouteTo (dest, Ipv4Mask::GetOnes (), interface, metric);
+    Ipv4RoutingTableEntry *route = new Ipv4RoutingTableEntry ();
+    *route = Ipv4RoutingTableEntry::CreateNetworkRouteTo (dest,
+                                                          Ipv4Mask::GetOnes (),
+                                                          interface);
+    m_host_routes.insert(std::pair<uint32_t, Ipv4RoutingTableEntry *>(dest.Get(), route));
 }
 
 void 
@@ -224,19 +235,35 @@ Ipv4StaticRouting::LookupStatic (Ipv4Address dest, Ptr<NetDevice> oif)
 {
   NS_LOG_FUNCTION (this << dest << " " << oif);
   Ptr<Ipv4Route> rtentry = 0;
-  uint16_t longest_mask = 0;
-  uint32_t shortest_metric = 0xffffffff;
   /* when sending on local multicast, there have to be interface specified */
-  if (dest.IsLocalMulticast ())
+    if (dest.IsLocalMulticast ())
     {
-      NS_ASSERT_MSG (oif, "Try to send on link-local multicast address, and no interface index is given!");
+        NS_ASSERT_MSG (oif, "Try to send on link-local multicast address, and no interface index is given!");
 
-      rtentry = Create<Ipv4Route> ();
-      rtentry->SetDestination (dest);
-      rtentry->SetGateway (Ipv4Address::GetZero ());
-      rtentry->SetOutputDevice (oif);
-      rtentry->SetSource (m_ipv4->GetAddress (m_ipv4->GetInterfaceForDevice (oif), 0).GetLocal ());
-      return rtentry;
+        rtentry = Create<Ipv4Route> ();
+        rtentry->SetDestination (dest);
+        rtentry->SetGateway (Ipv4Address::GetZero ());
+        rtentry->SetOutputDevice (oif);
+        rtentry->SetSource (m_ipv4->GetAddress (m_ipv4->GetInterfaceForDevice (oif), 0).GetLocal ());
+        return rtentry;
+    }
+
+    uint16_t longest_mask = 0;
+    uint32_t shortest_metric = 0xffffffff;
+
+    std::map<uint32_t, Ipv4RoutingTableEntry *>::iterator mapiter = m_host_routes.find(dest.Get());
+    if (mapiter != m_host_routes.end()) {
+        Ipv4RoutingTableEntry* route = (mapiter->second);
+        uint32_t interfaceIdx = route->GetInterface ();
+        rtentry = Create<Ipv4Route> ();
+        rtentry->SetDestination (route->GetDest ());
+        if (route->GetDest() != dest) {
+            std::cout << "HELP" << std::endl;
+        }
+        rtentry->SetSource (m_ipv4->SourceAddressSelection (interfaceIdx, route->GetDest ()));
+        rtentry->SetGateway (route->GetGateway ());
+        rtentry->SetOutputDevice (m_ipv4->GetNetDevice (interfaceIdx));
+        return rtentry;
     }
 
 
@@ -357,7 +384,7 @@ uint32_t
 Ipv4StaticRouting::GetNRoutes (void) const
 {
   NS_LOG_FUNCTION (this);
-  return m_networkRoutes.size ();;
+  return m_networkRoutes.size ();
 }
 
 Ipv4RoutingTableEntry

@@ -23,6 +23,7 @@
 #include "ipv4-interface-address.h"
 #include "ns3/log.h"
 
+#include <unordered_map>
 
 namespace ns3 {
 
@@ -200,6 +201,13 @@ Ipv4EndPointDemux::Lookup (Ipv4Address daddr, uint16_t dport,
                            Ipv4Address saddr, uint16_t sport,
                            Ptr<Ipv4Interface> incomingInterface)
 {
+    // PHILIP: We strike again! This optimization works only for TCP connections and works on the assumption
+    // that no two IPs will try connecting to us with the same remote port, and that once a remote port connects to us
+    // the endpoint it connects to will never change. Can be extended to support both of the above exceptions in the
+    // future if necessary
+    std::unordered_map<uint16_t,EndPoints >::iterator it = m_portToEndpoints.find(sport);
+    if (it != m_portToEndpoints.end()) return it->second;
+
   NS_LOG_FUNCTION (this << daddr << dport << saddr << sport << incomingInterface);
   
   EndPoints retval1; // Matches exact on local port, wildcards on others
@@ -326,7 +334,12 @@ Ipv4EndPointDemux::Lookup (Ipv4Address daddr, uint16_t dport,
 
   // Here we find the most exact match
   EndPoints retval;
-  if (!retval4.empty ()) retval = retval4;
+  if (!retval4.empty ())  {
+      // PHILIP: We add to the map here so we don't have to iterate over all the endpoints the next time we see this
+      // remote port
+      m_portToEndpoints[sport] = retval4;
+      retval = retval4;
+  }
   else if (!retval3.empty ()) retval = retval3;
   else if (!retval2.empty ()) retval = retval2;
   else retval = retval1;
