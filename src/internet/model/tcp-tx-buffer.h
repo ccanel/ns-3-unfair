@@ -31,6 +31,11 @@
 #include "ns3/data-rate.h"
 #include "ns3/tcp-socket-base.h"
 
+#include <queue>
+#include <bits/stdc++.h>
+
+using namespace std;
+
 namespace ns3 {
 class Packet;
 class TcpSocketState;
@@ -343,7 +348,9 @@ public:
    * \param isRecovery true if the socket congestion state is in recovery mode
    * \return true is seq is updated, false otherwise
    */
-  bool NextSeg (SequenceNumber32 *seq, bool isRecovery) const;
+   // PHILIP: Uncomment below line if we revert the PQ based NextSeg optimization
+//  bool NextSeg (SequenceNumber32 *seq, bool isRecovery) const;
+  bool NextSeg (SequenceNumber32 *seq, bool isRecovery);
 
   /**
    * \brief Return total bytes in flight
@@ -367,7 +374,7 @@ public:
    * \brief Set the entire sent list as lost (typically after an RTO)
    *
    * Used to set all the sent list as lost, so the bytes in flight is not counting
-   * them as in flight, but we will continue to use SACK informations for
+   * them as in flight, but we will continue to use SACK information for
    * recovering the timeout.
    *
    * Moreover, reset the retransmit flag for every item.
@@ -526,17 +533,6 @@ private:
   /**
    * \brief Get a block of data previously transmitted
    *
-   * \see GetPacketFromList
-   *
-   * \param numBytes number of bytes to copy
-   * \param seq sequence requested
-   * \returns the item that contains the right packet
-   */
-  TcpTxItem* GetTransmittedSegment (uint32_t numBytes, const SequenceNumber32 &seq);
-
-  /**
-   * \brief Get a block of data previously transmitted and Mark it as retransmitted
-   *
    * This is clearly a retransmission, and if everything is going well,
    * the block requested is matching perfectly with another one requested
    * in the past. If not, fragmentation or merge are required. We manage
@@ -548,7 +544,7 @@ private:
    * \param seq sequence requested
    * \returns the item that contains the right packet
    */
-  TcpTxItem* MarkTransmittedSegment (uint32_t numBytes, const SequenceNumber32 &seq);
+  TcpTxItem* GetTransmittedSegment (uint32_t numBytes, const SequenceNumber32 &seq);
 
   /**
    * \brief Get a block (which is returned as Packet) from a list
@@ -661,15 +657,27 @@ private:
   std::pair <TcpTxBuffer::PacketList::const_iterator, SequenceNumber32>
   FindHighestSacked () const;
 
-  PacketList m_appList;  //!< Buffer for application data
+  void UpdatePq(bool add, uint32_t seq); // PHILIP: for adding or removing a seq number from the priority queue
+
+  // PHILIP: Behold, this change deeply affects how the tx buffer is implemented. Proceed with caution Phil, proceed with caution.
+//  PacketList m_appList;  //!< Buffer for application data
   PacketList m_sentList; //!< Buffer for sent (but not acked) data
   uint32_t m_maxBuffer;  //!< Max number of data bytes in buffer (SND.WND)
   uint32_t m_size;       //!< Size of all data in this buffer
   uint32_t m_sentSize;   //!< Size of sent (and not discarded) segments
+    // PHILIP: Behold, this change deeply affects how the tx buffer is implemented. Proceed with caution Phil, proceed with caution.
+    // This little counter will keep track of the count of all the packets in the old m_appList
+    // This technique works only when all our packets are IDENTICAL and zeros
+//    uint32_t m_appListPackets {0};
+    Ptr<Packet> m_appPacket = {nullptr}; // PHILIP: Holds a reference to empty packet so we don't need to create a new one every time we move from appList to sentList
 
   TracedValue<SequenceNumber32> m_firstByteSeq; //!< Sequence number of the first byte in data (SND.UNA)
   std::pair <PacketList::const_iterator, SequenceNumber32> m_highestSack; //!< Highest SACK byte
 
+  // PHILIP: More delicious optimization changes
+    unordered_set<uint32_t> m_inPqSet;
+    priority_queue<uint32_t,vector<uint32_t>,greater<uint32_t> > m_seqPq;
+    // PHILIP: END
   uint32_t m_lostOut   {0}; //!< Number of lost bytes
   uint32_t m_sackedOut {0}; //!< Number of sacked bytes
   uint32_t m_retrans   {0}; //!< Number of retransmitted bytes
@@ -699,6 +707,6 @@ std::ostream & operator<< (std::ostream & os, TcpTxBuffer const & tcpTxBuf);
  */
 std::ostream & operator<< (std::ostream & os, TcpTxItem const & item);
 
-} // namepsace ns3
+} // namespace ns3
 
 #endif /* TCP_TX_BUFFER_H */
