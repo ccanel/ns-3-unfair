@@ -280,7 +280,7 @@ int main (int argc, char *argv[])
   }
 
   for (uint32_t i = 0; i < otherFlows; ++i) {
-    sinks.push_back (CreateFlow (port + otherFlows + i, i1i2, nodes, durS, packet_size, otherProto));
+    sinks.push_back (CreateFlow (port + unfairFlows + i, i1i2, nodes, durS, packet_size, otherProto));
   }
 
   /////////////////////////////////////////

@@ -1,8 +1,9 @@
 //
 // Network topology:
 //
-//       t0     t1                (t0 = 10.1.1.1)
-//        |      |                 (t1 = 10.1.1.2)  Note odd addressing
+//    (Left - senders)
+//       t0     t1                 (t0 = 10.1.0.1)
+//        |      |                 (t1 = 10.1.1.1) 
 //       -----------
 //       | bridge1 |
 //       -----------
@@ -10,8 +11,9 @@
 //       -----------
 //       | bridge2 |
 //       -----------
-//        |      |                 (b0 = 10.1.1.3)
-//        b0     b1                (b1 = 10.1.1.4)
+//        |      |                 (b0 = 20.1.0.1)
+//        b0     b1                (b1 = 20.1.1.1)
+//    (Right - receivers)
 //
 // - Flow from t0 to b0 using BulkSendApplication.
 // - Tracing of queues and packet receptions to file "*.tr" and "*.pcap" when
@@ -107,14 +109,15 @@ int main (int argc, char *argv[])
   std::string fairShareType = "Mathis";
   std::string ackPacingType = "Calc";
 
-  const char *edge_delay_usage = "List of the edge delays in the dumbbell topology seperated by comma."
+  const char *edge_delay_usage = "List of the edge delays (us) in the dumbbell topology seperated by comma."
                                  "Be mindful that both left and right edge will have the same delay. " 
-                                 "Edges will have the default delay if not specified. " 
-                                 "(e.g. \"1000,500,1000,2000\")";
+                                 "Edges will have the default delay (500us) if not specified" 
+                                 "(e.g. \"1000,500,1000,2000\"). Also, there's a shortcut to specify the same "
+                                 "delay for all flows, using [1000] instead of comma seperated string.";
 
   CommandLine cmd;
   cmd.AddValue ("bandwidth_Mbps", "Bandwidth for the bottleneck router (Mbps).", bwMbps);
-  cmd.AddValue ("delay_us", "Bottleneck link delay (us).", btlDelUs);
+  cmd.AddValue ("bottleneck_delay_us", "Bottleneck link delay (us).", btlDelUs);
   cmd.AddValue ("queue_capacity_p", "Router queue size at bottleneck router (packets).", btlQueP);
   cmd.AddValue ("edge_delay_us", edge_delay_usage, edgeDelayUs);
   cmd.AddValue ("packet_size", "Size of a single packet (bytes)", packet_size);
@@ -166,17 +169,20 @@ int main (int argc, char *argv[])
 
   // Edge delays
   std::vector<uint32_t> edge_delays;
-  std::stringstream ss(edgeDelayUs);
 
-  while (ss.good()) {
-    std::string edge_delay;
-    getline(ss, edge_delay, ',');
-    if (!edge_delay.empty()) {
-      edge_delays.push_back(std::stoi(edge_delay));
+  if (edgeDelayUs.at(0) == '[' && edgeDelayUs.at(edgeDelayUs.length() - 1) == ']') {
+    edge_delays.push_back(std::stoi(edgeDelayUs.substr(1, edgeDelayUs.length() - 2)));
+  } else {
+    std::stringstream ss(edgeDelayUs);
+    while (ss.good()) {
+      std::string edge_delay;
+      getline(ss, edge_delay, ',');
+      if (!edge_delay.empty()) {
+        edge_delays.push_back(std::stoi(edge_delay));
+      }
     }
+    NS_ABORT_UNLESS(edge_delays.size() == num_nodes);
   }
-
-
 
   /////////////////////////////////////////
   // Turn on logging and report parameters.
@@ -189,18 +195,19 @@ int main (int argc, char *argv[])
                "Bottleneck router delay: " << btlDel << "\n" <<
                "Edge bandwidth: " << EDGE_BW);
 
-  std::string edge_delay_info = "Edge delays: ";
+  std::stringstream edge_delay_ss;
+  edge_delay_ss << "Edge delays: ";
   for (uint32_t i = 0; i < num_nodes; i++) {
     uint32_t edge_delay_num;
     if (i < edge_delays.size()) {
       edge_delay_num = edge_delays[i];
     } else {
-      edge_delay_num = EDGE_DELAY_US;
+      edge_delay_num = edge_delays[0];
     }
-    edge_delay_info += std::to_string(edge_delay_num) + "us ";
+    edge_delay_ss << std::to_string(edge_delay_num) << "us ";
   }
 
-  NS_LOG_INFO(edge_delay_info);
+  NS_LOG_INFO(edge_delay_ss.str());
 
   NS_LOG_INFO( "RTT: " << rttUs << "us\n" <<
                "Packet size: " << packet_size << " bytes\n" <<
@@ -268,15 +275,21 @@ int main (int argc, char *argv[])
   PointToPointDumbbellHelper dumbBellTopology(num_nodes, p2pLeaf, num_nodes, 
                                              p2pLeaf, p2pRouter);
 
-  for (uint32_t i = 0; i < std::min(num_nodes, static_cast<uint32_t>(edge_delays.size())); ++i) {
+  for (uint32_t i = 0; i < num_nodes; ++i) {
     Ptr <Node> leftNode = dumbBellTopology.GetLeft(i);
     Ptr <Node> rightNode = dumbBellTopology.GetRight(i);
 
     Ptr <Channel> leftNodeChannel = leftNode->GetDevice(0)->GetChannel();
     Ptr <Channel> rightNodeChannel = rightNode->GetDevice(0)->GetChannel();
 
-    leftNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[i])));
-    rightNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[i])));
+    if (edge_delays.size() == num_nodes) {
+      leftNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[i])));
+      rightNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[i])));
+    } else {
+      // All node pairs have the same delay
+      leftNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[0])));
+      rightNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[0])));
+    }
   }
 
   // Install stack
@@ -284,9 +297,9 @@ int main (int argc, char *argv[])
   dumbBellTopology.InstallStack(stack);
 
   // Assign IP Addresses
-  dumbBellTopology.AssignIpv4Addresses(Ipv4AddressHelper("10.1.0.0", "/24"),
-                                      Ipv4AddressHelper("20.1.0.0", "/24"),
-                                      Ipv4AddressHelper("30.1.0.0", "/24"));
+  dumbBellTopology.AssignIpv4Addresses(Ipv4AddressHelper("10.1.0.0", "/24"),  // Left Nodes
+                                       Ipv4AddressHelper("20.1.0.0", "/24"),  // Right Nodes
+                                       Ipv4AddressHelper("30.1.0.0", "/24")); // Router address
 
   NodeContainer leftNodes, rightNodes;
   for (uint32_t k = 0; k < num_nodes; ++k) {
@@ -334,12 +347,12 @@ int main (int argc, char *argv[])
   PacketSinkHelper sink("ns3::TcpSocketFactory",
                           InetSocketAddress(Ipv4Address::GetAny(), port));
 
-  ApplicationContainer bottomSinkApp = sink.Install(rightNodes);
-  bottomSinkApp.Start(Seconds(START_TIME));
-  bottomSinkApp.Stop(Seconds(START_TIME + durS));
+  ApplicationContainer rightSinkApp = sink.Install(rightNodes);
+  rightSinkApp.Start(Seconds(START_TIME));
+  rightSinkApp.Stop(Seconds(START_TIME + durS));
 
   for (uint32_t i = 0; i < num_nodes; ++i) {
-    sinks.push_back(DynamicCast<PacketSink>(bottomSinkApp.Get(i)));
+    sinks.push_back(DynamicCast<PacketSink>(rightSinkApp.Get(i)));
   }
 
   for (uint32_t i = 0; i < num_nodes; ++i) {
