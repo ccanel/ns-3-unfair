@@ -111,13 +111,14 @@ private:
    */
   void SendData ();
 
-  Ptr<Socket>     m_socket;       //!< Associated socket
-  Address         m_peer;         //!< Peer address
-  bool            m_connected;    //!< True if connected
-  uint32_t        m_sendSize;     //!< Size of data to send each time
-  uint64_t        m_maxBytes;     //!< Limit total number of bytes sent
-  uint64_t        m_totBytes;     //!< Total bytes sent so far
-  TypeId          m_tid;          //!< The type of protocol to use.
+  Ptr<Socket>     m_socket;        //!< Associated socket
+  Address         m_peer;          //!< Peer address
+  bool            m_connected;     //!< True if connected
+  uint32_t        m_sendSize;      //!< Size of data to send each time
+  uint64_t        m_maxBytes;      //!< Limit total number of bytes sent
+  uint64_t        m_totBytes;      //!< Total bytes sent so far
+  TypeId          m_tid;           //!< The type of protocol to use.
+  TypeId          m_congestion_tid;//!< The type of congestion control protocol.
 
   /// Traced Callback: sent packets
   TracedCallback<Ptr<const Packet> > m_txTrace;

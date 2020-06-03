@@ -45,6 +45,12 @@ TcpSocketFactoryImpl::CreateSocket (void)
   return m_tcp->CreateSocket ();
 }
 
+Ptr<Socket>
+TcpSocketFactoryImpl::CreateSocket (TypeId congestionTypeId)
+{
+  return m_tcp->CreateSocket (congestionTypeId);
+}
+
 void 
 TcpSocketFactoryImpl::DoDispose (void)
 {

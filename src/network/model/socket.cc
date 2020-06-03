@@ -25,6 +25,7 @@
 #include "node.h"
 #include "socket.h"
 #include "socket-factory.h"
+#include "../../internet/model/tcp-socket-factory-impl.h"
 #include <limits>
 
 namespace ns3 {
@@ -68,14 +69,14 @@ Socket::~Socket ()
 }
 
 Ptr<Socket> 
-Socket::CreateSocket (Ptr<Node> node, TypeId tid)
+Socket::CreateSocket (Ptr<Node> node, TypeId tid, TypeId congestionTypeId)
 {
   NS_LOG_FUNCTION (node << tid);
   Ptr<Socket> s;
   NS_ASSERT (node != 0);
-  Ptr<SocketFactory> socketFactory = node->GetObject<SocketFactory> (tid);
+  Ptr<TcpSocketFactoryImpl> socketFactory = node->GetObject<TcpSocketFactoryImpl> (tid);
   NS_ASSERT (socketFactory != 0);
-  s = socketFactory->CreateSocket ();
+  s = socketFactory->CreateSocket (congestionTypeId);
   NS_ASSERT (s != 0);
   return s;
 }
