@@ -55,7 +55,8 @@ extern bool useReno;
 
 
 Ptr<PacketSink> CreateFlow(uint16_t port, Ipv4InterfaceContainer i1i2,
-                           NodeContainer nodes, double durS, uint32_t packet_size)
+                           NodeContainer nodes, double durS, uint32_t packet_size,
+                           const std::string& congestion_type)
 {
   // Source (at node 0).
   BulkSendHelper src ("ns3::TcpSocketFactory",
@@ -63,6 +64,7 @@ Ptr<PacketSink> CreateFlow(uint16_t port, Ipv4InterfaceContainer i1i2,
   // Set the amount of data to send in bytes (0 for unlimited).
   src.SetAttribute ("MaxBytes", UintegerValue (0));
   src.SetAttribute ("SendSize", UintegerValue (packet_size));
+  src.SetAttribute ("CongestionType", StringValue (congestion_type));
   ApplicationContainer srcApp = src.Install (nodes.Get (0));
   srcApp.Start (Seconds (START_TIME));
   srcApp.Stop (Seconds (START_TIME + durS));
@@ -273,8 +275,12 @@ int main (int argc, char *argv[])
   // Create flows.
   NS_LOG_INFO ("Creating flows.");
   uint32_t port = 101;
-  for (uint32_t i = 0; i < unfairFlows + otherFlows; ++i) {
-    sinks.push_back (CreateFlow (port + i, i1i2, nodes, durS, packet_size));
+  for (uint32_t i = 0; i < unfairFlows; ++i) {
+    sinks.push_back (CreateFlow (port + i, i1i2, nodes, durS, packet_size, "ns3::TcpBbr"));
+  }
+
+  for (uint32_t i = 0; i < otherFlows; ++i) {
+    sinks.push_back (CreateFlow (port + otherFlows + i, i1i2, nodes, durS, packet_size, otherProto));
   }
 
   /////////////////////////////////////////
