@@ -87,13 +87,42 @@ void PrintStats ()
 }
 
 
+void ProcessEdgeDelayString (const std::string &delay_string, std::vector<uint32_t>& edge_delays, 
+                             uint32_t num_flows)
+{
+  if (delay_string.at(0) == '[' && delay_string.at(delay_string.length() - 1) == ']') {
+
+    // One delay value for all node pairs
+    uint32_t delay = std::stoi(delay_string.substr(1, delay_string.length() - 2));
+    for (uint32_t i = 0; i < num_flows; i++) {
+      edge_delays.push_back(delay);
+    }
+
+  } else {
+
+    // Parse comma seperated list
+    uint32_t prev_size = edge_delays.size();
+    std::stringstream ss(delay_string);
+    while (ss.good()) {
+      std::string edge_delay;
+      getline(ss, edge_delay, ',');
+      if (!edge_delay.empty()) {
+        edge_delays.push_back(std::stoi(edge_delay));
+      }
+    }
+    NS_ABORT_UNLESS(edge_delays.size() - prev_size == num_flows);
+  }
+}
+
+
 int main (int argc, char *argv[])
 {
   // Parse command line arguments.
   double bwMbps = 10;
   double btlDelUs = 5000;
   uint32_t btlQueP = 1000;
-  std::string edgeDelayUs = "";
+  std::string unfairEdgeDelayUs = "";
+  std::string otherEdgeDelayUs = "";
   uint32_t packet_size = PACKET_SIZE;
   uint32_t mtu = MTU;
   double durS = 20;
@@ -109,7 +138,8 @@ int main (int argc, char *argv[])
   std::string fairShareType = "Mathis";
   std::string ackPacingType = "Calc";
 
-  const char *edge_delay_usage = "List of the edge delays (us) in the dumbbell topology seperated by comma."
+  const char *edge_delay_usage = "List of the edge delays (us) for unfair flows in the "
+                                 "dumbbell topology seperated by comma."
                                  "Be mindful that both left and right edge will have the same delay. " 
                                  "Edges will have the default delay (500us) if not specified" 
                                  "(e.g. \"1000,500,1000,2000\"). Also, there's a shortcut to specify the same "
@@ -119,7 +149,8 @@ int main (int argc, char *argv[])
   cmd.AddValue ("bandwidth_Mbps", "Bandwidth for the bottleneck router (Mbps).", bwMbps);
   cmd.AddValue ("bottleneck_delay_us", "Bottleneck link delay (us).", btlDelUs);
   cmd.AddValue ("queue_capacity_p", "Router queue size at bottleneck router (packets).", btlQueP);
-  cmd.AddValue ("edge_delay_us", edge_delay_usage, edgeDelayUs);
+  cmd.AddValue ("unfair_edge_delay_us", edge_delay_usage, unfairEdgeDelayUs);
+  cmd.AddValue ("other_edge_delay_us", "Edge delay for other flows (ms)", otherEdgeDelayUs);
   cmd.AddValue ("packet_size", "Size of a single packet (bytes)", packet_size);
   cmd.AddValue ("experiment_duration_s", "Simulation duration (s).", durS);
   cmd.AddValue ("warmup_s", "Time before delaying ACKs (s)", warmupS);
@@ -170,18 +201,20 @@ int main (int argc, char *argv[])
   // Edge delays
   std::vector<uint32_t> edge_delays;
 
-  if (edgeDelayUs.at(0) == '[' && edgeDelayUs.at(edgeDelayUs.length() - 1) == ']') {
-    edge_delays.push_back(std::stoi(edgeDelayUs.substr(1, edgeDelayUs.length() - 2)));
+  if (!unfairEdgeDelayUs.empty()) {
+    ProcessEdgeDelayString(unfairEdgeDelayUs, edge_delays, unfairFlows);
   } else {
-    std::stringstream ss(edgeDelayUs);
-    while (ss.good()) {
-      std::string edge_delay;
-      getline(ss, edge_delay, ',');
-      if (!edge_delay.empty()) {
-        edge_delays.push_back(std::stoi(edge_delay));
-      }
+    for (uint32_t i = 0; i < unfairFlows; ++i) {
+      edge_delays.push_back(EDGE_DELAY_US);
     }
-    NS_ABORT_UNLESS(edge_delays.size() == num_nodes);
+  }
+
+  if (!otherEdgeDelayUs.empty()) {
+    ProcessEdgeDelayString(otherEdgeDelayUs, edge_delays, otherFlows);
+  } else {
+    for (uint32_t i = 0; i < otherFlows; ++i) {
+      edge_delays.push_back(EDGE_DELAY_US);
+    }
   }
 
   /////////////////////////////////////////
@@ -198,13 +231,7 @@ int main (int argc, char *argv[])
   std::stringstream edge_delay_ss;
   edge_delay_ss << "Edge delays: ";
   for (uint32_t i = 0; i < num_nodes; i++) {
-    uint32_t edge_delay_num;
-    if (i < edge_delays.size()) {
-      edge_delay_num = edge_delays[i];
-    } else {
-      edge_delay_num = edge_delays[0];
-    }
-    edge_delay_ss << std::to_string(edge_delay_num) << "us ";
+    edge_delay_ss << std::to_string(edge_delays[i]) << "us ";
   }
 
   NS_LOG_INFO(edge_delay_ss.str());
@@ -260,12 +287,15 @@ int main (int argc, char *argv[])
   Config::SetDefault ("ns3::TcpSocketBase::MaxPacketRecords",
                       UintegerValue (10000));
 
+  // p2pRouter is the link connecting bridge 1 and bridge 2 in the graph above (bottleneck router)
   PointToPointHelper p2pRouter (PCAP_LEN);
   p2pRouter.SetDeviceAttribute ("DataRate", StringValue (btlBWStr));
   p2pRouter.SetChannelAttribute ("Delay", StringValue (btlDel));
   p2pRouter.SetDeviceAttribute ("Mtu", UintegerValue (mtu));
   p2pRouter.SetQueue ("ns3::DropTailQueue", "MaxSize", QueueSizeValue (btlQue));
 
+  // p2pLeaf are symmetric links that connect senders to bridege 1 and receivers to bridge 2
+  // It is used twice in the creation of PointToPointDumbbellHelper
   PointToPointHelper p2pLeaf (PCAP_LEN);
   p2pLeaf.SetDeviceAttribute ("DataRate", StringValue (EDGE_BW));
   p2pLeaf.SetChannelAttribute ("Delay", StringValue (std::to_string(EDGE_DELAY_US) + "us"));
@@ -276,20 +306,14 @@ int main (int argc, char *argv[])
                                              p2pLeaf, p2pRouter);
 
   for (uint32_t i = 0; i < num_nodes; ++i) {
-    Ptr <Node> leftNode = dumbBellTopology.GetLeft(i);
-    Ptr <Node> rightNode = dumbBellTopology.GetRight(i);
+    Ptr<Node> leftNode = dumbBellTopology.GetLeft(i);
+    Ptr<Node> rightNode = dumbBellTopology.GetRight(i);
 
-    Ptr <Channel> leftNodeChannel = leftNode->GetDevice(0)->GetChannel();
-    Ptr <Channel> rightNodeChannel = rightNode->GetDevice(0)->GetChannel();
+    Ptr<Channel> leftNodeChannel = leftNode->GetDevice(0)->GetChannel();
+    Ptr<Channel> rightNodeChannel = rightNode->GetDevice(0)->GetChannel();
 
-    if (edge_delays.size() == num_nodes) {
-      leftNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[i])));
-      rightNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[i])));
-    } else {
-      // All node pairs have the same delay
-      leftNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[0])));
-      rightNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[0])));
-    }
+    leftNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[i])));
+    rightNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[i])));
   }
 
   // Install stack
