@@ -48,7 +48,9 @@ public:
    */
   void SetTcp (Ptr<TcpL4Protocol> tcp);
 
-  virtual Ptr<Socket> CreateSocket (void);
+  virtual Ptr<Socket> CreateSocket ();
+
+  virtual Ptr<Socket> CreateSocket (TypeId congestionTypeId);
 
 protected:
   virtual void DoDispose (void);

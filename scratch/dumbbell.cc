@@ -1,11 +1,21 @@
 //
 // Network topology:
 //
-//       n0 ------------ (n1/router) -------------- n2
-//            10.1.1.x                192.168.1.x
-//       10.1.1.1    10.1.1.2   192.16.1.1     192.168.1.2
+//    (Left - senders)
+//       t0     t1                 (t0 = 10.1.0.1)
+//        |      |                 (t1 = 10.1.1.1) 
+//       -----------
+//       | bridge1 |
+//       -----------
+//           |
+//       -----------
+//       | bridge2 |
+//       -----------
+//        |      |                 (b0 = 20.1.0.1)
+//        b0     b1                (b1 = 20.1.1.1)
+//    (Right - receivers)
 //
-// - Flow from n0 to n2 using BulkSendApplication.
+// - Flow from t0 to b0 using BulkSendApplication.
 // - Tracing of queues and packet receptions to file "*.tr" and "*.pcap" when
 //   tracing is turned on.
 //
@@ -19,13 +29,20 @@
 // ns-3 includes.
 #include "ns3/core-module.h"
 #include "ns3/point-to-point-module.h"
+#include "ns3/point-to-point-dumbbell.h"
 #include "ns3/internet-module.h"
 #include "ns3/applications-module.h"
 #include "ns3/network-module.h"
 #include "ns3/packet-sink.h"
 #include "ns3/ipv4-global-routing-helper.h"
+#include "ns3/ipv4-static-routing-helper.h"
+#include "ns3/ipv4-list-routing-helper.h"
+#include "ns3/ipv4-nix-vector-helper.h"
 #include "ns3/config-store-module.h"
 #include "ns3/config.h"
+#include "ns3/bridge-module.h"
+#include "ns3/ipv4.h"
+#include "ns3/node.h"
 
 using namespace ns3;
 
@@ -40,10 +57,9 @@ using namespace ns3;
 #define MTU               1500      // Bytes
 #define HEADER_AND_OPTION 120       // Bytes
 #define PCAP_LEN          200       // Bytes
-#define SRC_TO_ROUTER_BW  "10Gbps"  // Bandwidth from the source to the router.
-                                    // This should be configured to be great
-                                    // enough such that it is not the
-                                    // bottleneck.
+#define EDGE_BW           "10Gbps"  // Bandwidth on the edge of the dumbell
+#define EDGE_QUEUE_SIZE   10000     // Queue size on the edge
+#define EDGE_DELAY_US     500       // Delay on the edge
 
 // For logging.
 NS_LOG_COMPONENT_DEFINE ("main");
@@ -52,32 +68,6 @@ const int BBR_PRINT_PERIOD = 2;  // sec
 
 std::vector<Ptr<PacketSink>> sinks;
 extern bool useReno;
-
-
-Ptr<PacketSink> CreateFlow(uint16_t port, Ipv4InterfaceContainer i1i2,
-                           NodeContainer nodes, double durS, uint32_t packet_size,
-                           const std::string& congestion_type)
-{
-  // Source (at node 0).
-  BulkSendHelper src ("ns3::TcpSocketFactory",
-                      InetSocketAddress (i1i2.GetAddress (1), port));
-  // Set the amount of data to send in bytes (0 for unlimited).
-  src.SetAttribute ("MaxBytes", UintegerValue (0));
-  src.SetAttribute ("SendSize", UintegerValue (packet_size));
-  src.SetAttribute ("CongestionType", StringValue (congestion_type));
-  ApplicationContainer srcApp = src.Install (nodes.Get (0));
-  srcApp.Start (Seconds (START_TIME));
-  srcApp.Stop (Seconds (START_TIME + durS));
-
-  // Destination (at node 2).
-  PacketSinkHelper dst ("ns3::TcpSocketFactory",
-                         InetSocketAddress (Ipv4Address::GetAny (), port));
-  ApplicationContainer dstApp = dst.Install (nodes.Get (2));
-  dstApp.Start (Seconds (START_TIME));
-  dstApp.Stop (Seconds (START_TIME + durS));
-  return DynamicCast<PacketSink> (dstApp.Get (0));
-}
-
 
 void PrintStats ()
 {
@@ -97,12 +87,42 @@ void PrintStats ()
 }
 
 
+void ProcessEdgeDelayString (const std::string &delay_string, std::vector<uint32_t>& edge_delays, 
+                             uint32_t num_flows)
+{
+  if (delay_string.at(0) == '[' && delay_string.at(delay_string.length() - 1) == ']') {
+
+    // One delay value for all node pairs
+    uint32_t delay = std::stoi(delay_string.substr(1, delay_string.length() - 2));
+    for (uint32_t i = 0; i < num_flows; i++) {
+      edge_delays.push_back(delay);
+    }
+
+  } else {
+
+    // Parse comma seperated list
+    uint32_t prev_size = edge_delays.size();
+    std::stringstream ss(delay_string);
+    while (ss.good()) {
+      std::string edge_delay;
+      getline(ss, edge_delay, ',');
+      if (!edge_delay.empty()) {
+        edge_delays.push_back(std::stoi(edge_delay));
+      }
+    }
+    NS_ABORT_UNLESS(edge_delays.size() - prev_size == num_flows);
+  }
+}
+
+
 int main (int argc, char *argv[])
 {
   // Parse command line arguments.
   double bwMbps = 10;
-  double delUs = 5000;
-  uint32_t queP = 1000;
+  double btlDelUs = 5000;
+  uint32_t btlQueP = 1000;
+  std::string unfairEdgeDelayUs = "";
+  std::string otherEdgeDelayUs = "";
   uint32_t packet_size = PACKET_SIZE;
   uint32_t mtu = MTU;
   double durS = 20;
@@ -118,10 +138,19 @@ int main (int argc, char *argv[])
   std::string fairShareType = "Mathis";
   std::string ackPacingType = "Calc";
 
+  const char *edge_delay_usage = "List of the edge delays (us) for unfair flows in the "
+                                 "dumbbell topology seperated by comma."
+                                 "Be mindful that both left and right edge will have the same delay. " 
+                                 "Edges will have the default delay (500us) if not specified" 
+                                 "(e.g. \"1000,500,1000,2000\"). Also, there's a shortcut to specify the same "
+                                 "delay for all flows, using [1000] instead of comma seperated string.";
+
   CommandLine cmd;
-  cmd.AddValue ("bandwidth_Mbps", "Bandwidth for both links (Mbps).", bwMbps);
-  cmd.AddValue ("delay_us", "Link delay (us). RTT is 4x this value.", delUs);
-  cmd.AddValue ("queue_capacity_p", "Router queue size (packets).", queP);
+  cmd.AddValue ("bandwidth_Mbps", "Bandwidth for the bottleneck router (Mbps).", bwMbps);
+  cmd.AddValue ("bottleneck_delay_us", "Bottleneck link delay (us).", btlDelUs);
+  cmd.AddValue ("queue_capacity_p", "Router queue size at bottleneck router (packets).", btlQueP);
+  cmd.AddValue ("unfair_edge_delay_us", edge_delay_usage, unfairEdgeDelayUs);
+  cmd.AddValue ("other_edge_delay_us", "Edge delay for other flows (ms)", otherEdgeDelayUs);
   cmd.AddValue ("packet_size", "Size of a single packet (bytes)", packet_size);
   cmd.AddValue ("experiment_duration_s", "Simulation duration (s).", durS);
   cmd.AddValue ("warmup_s", "Time before delaying ACKs (s)", warmupS);
@@ -142,23 +171,51 @@ int main (int argc, char *argv[])
                    otherProto == "ns3::TcpCubic" ||
                    otherProto == "ns3::TcpBbr");
 
-  uint32_t rttUs = delUs * 4;
+  uint32_t rttUs = (btlDelUs + EDGE_DELAY_US * 2) * 2;
+
+  // Number of Nodes
+  uint32_t num_nodes = unfairFlows + otherFlows;
+
+  // Bandwidth
   std::stringstream bwSs;
   bwSs << bwMbps << "Mbps";
   std::string bw = bwSs.str ();
-  std::stringstream delSs;
-  delSs << delUs << "us";
-  std::string del = delSs.str ();
-  std::stringstream queSs;
-  queSs << queP << "p";
-  std::string que = queSs.str ();
+
+  // Delay
+  std::stringstream btlDelSs;
+  btlDelSs << btlDelUs << "us";
+  std::string btlDel = btlDelSs.str ();
+
+  // Queue size
+  std::stringstream btlQueSs;
+  btlQueSs << btlQueP << "p";
+  std::string btlQue = btlQueSs.str ();
 
   double routerToDstBW = bwMbps;
   std::stringstream sndSS;
   sndSS << routerToDstBW << "Mbps";
-  std::string routerToDstBWStr = sndSS.str ();
+  std::string btlBWStr = sndSS.str ();
 
   mtu = packet_size + HEADER_AND_OPTION;
+
+  // Edge delays
+  std::vector<uint32_t> edge_delays;
+
+  if (!unfairEdgeDelayUs.empty()) {
+    ProcessEdgeDelayString(unfairEdgeDelayUs, edge_delays, unfairFlows);
+  } else {
+    for (uint32_t i = 0; i < unfairFlows; ++i) {
+      edge_delays.push_back(EDGE_DELAY_US);
+    }
+  }
+
+  if (!otherEdgeDelayUs.empty()) {
+    ProcessEdgeDelayString(otherEdgeDelayUs, edge_delays, otherFlows);
+  } else {
+    for (uint32_t i = 0; i < otherFlows; ++i) {
+      edge_delays.push_back(EDGE_DELAY_US);
+    }
+  }
 
   /////////////////////////////////////////
   // Turn on logging and report parameters.
@@ -167,17 +224,24 @@ int main (int argc, char *argv[])
   LogComponentEnable ("main", LOG_LEVEL_INFO);
 
   NS_LOG_INFO ("\n" <<
-               "Src to router bandwidth: " << SRC_TO_ROUTER_BW << "\n" <<
-               "Src to router delay: " << del << "\n" <<
-               "Router to dst bandwidth: " << bw << "\n" <<
-               "Router to dst delay: " << del << "\n" <<
-               "RTT: " << rttUs << "us\n" <<
+               "Bottleneck router bandwidth: " << bw << "\n" <<
+               "Bottleneck router delay: " << btlDel << "\n" <<
+               "Edge bandwidth: " << EDGE_BW);
+
+  std::stringstream edge_delay_ss;
+  edge_delay_ss << "Edge delays: ";
+  for (uint32_t i = 0; i < num_nodes; i++) {
+    edge_delay_ss << std::to_string(edge_delays[i]) << "us ";
+  }
+
+  NS_LOG_INFO(edge_delay_ss.str());
+
+  NS_LOG_INFO( "RTT: " << rttUs << "us\n" <<
                "Packet size: " << packet_size << " bytes\n" <<
-               "Router queue capacity: "<< queP << " packets\n" <<
+               "Bottleneck router queue capacity: "<< btlQueP << " packets\n" <<
                "BBR flows: " << unfairFlows << "\n" <<
                "Non-BBR flows: " << otherFlows << "\n" <<
                "Non-BBR protocol: " << otherProto << "\n" <<
-               "Warmup: " << warmupS << "s\n" <<
                "Duration: " << durS << "s\n" <<
                "Enable unfairness mitigation: " << (enableUnfair ? "yes" : "no") << "\n" <<
                "Fair share estimation type: " << fairShareType << "\n" <<
@@ -223,64 +287,116 @@ int main (int argc, char *argv[])
   Config::SetDefault ("ns3::TcpSocketBase::MaxPacketRecords",
                       UintegerValue (10000));
 
-  /////////////////////////////////////////
-  // Create nodes.
-  NS_LOG_INFO ("Creating nodes.");
-  NodeContainer nodes;  // 0: source, 1: router, 2: sink
-  nodes.Create (3);
+  // p2pRouter is the link connecting bridge 1 and bridge 2 in the graph above (bottleneck router)
+  PointToPointHelper p2pRouter (PCAP_LEN);
+  p2pRouter.SetDeviceAttribute ("DataRate", StringValue (btlBWStr));
+  p2pRouter.SetChannelAttribute ("Delay", StringValue (btlDel));
+  p2pRouter.SetDeviceAttribute ("Mtu", UintegerValue (mtu));
+  p2pRouter.SetQueue ("ns3::DropTailQueue", "MaxSize", QueueSizeValue (btlQue));
 
-  /////////////////////////////////////////
-  // Create channels.
-  NS_LOG_INFO ("Creating channels.");
-  NodeContainer n0Ton1 = NodeContainer (nodes.Get (0), nodes.Get (1));
-  NodeContainer n1Ton2 = NodeContainer (nodes.Get (1), nodes.Get (2));
+  // p2pLeaf are symmetric links that connect senders to bridege 1 and receivers to bridge 2
+  // It is used twice in the creation of PointToPointDumbbellHelper
+  PointToPointHelper p2pLeaf (PCAP_LEN);
+  p2pLeaf.SetDeviceAttribute ("DataRate", StringValue (EDGE_BW));
+  p2pLeaf.SetChannelAttribute ("Delay", StringValue (std::to_string(EDGE_DELAY_US) + "us"));
+  p2pLeaf.SetDeviceAttribute ("Mtu", UintegerValue (mtu));
+  p2pLeaf.SetQueue ("ns3::DropTailQueue", "MaxSize", QueueSizeValue (std::to_string(EDGE_QUEUE_SIZE) + "p"));
 
-  /////////////////////////////////////////
-  // Create links.
-  NS_LOG_INFO ("Creating links.");
+  PointToPointDumbbellHelper dumbBellTopology(num_nodes, p2pLeaf, num_nodes, 
+                                             p2pLeaf, p2pRouter);
 
-  // Server to Router.
-  PointToPointHelper p2p (PCAP_LEN);
-  p2p.SetDeviceAttribute ("DataRate", StringValue (SRC_TO_ROUTER_BW));
-  p2p.SetChannelAttribute ("Delay", StringValue (del));
-  p2p.SetDeviceAttribute ("Mtu", UintegerValue (mtu));
-  NetDeviceContainer devices1 = p2p.Install (n0Ton1);
+  for (uint32_t i = 0; i < num_nodes; ++i) {
+    Ptr<Node> leftNode = dumbBellTopology.GetLeft(i);
+    Ptr<Node> rightNode = dumbBellTopology.GetRight(i);
 
-  // Router to Client.
-  p2p.SetDeviceAttribute ("DataRate", StringValue (routerToDstBWStr));
-  p2p.SetChannelAttribute ("Delay", StringValue (del));
-  p2p.SetDeviceAttribute ("Mtu", UintegerValue (mtu));
-  p2p.SetQueue ("ns3::DropTailQueue", "MaxSize", QueueSizeValue (que));
-  NetDeviceContainer devices2 = p2p.Install (n1Ton2);
+    Ptr<Channel> leftNodeChannel = leftNode->GetDevice(0)->GetChannel();
+    Ptr<Channel> rightNodeChannel = rightNode->GetDevice(0)->GetChannel();
 
-  /////////////////////////////////////////
-  // Install Internet stack.
-  NS_LOG_INFO ("Installing Internet stack.");
-  InternetStackHelper internet;
-  internet.Install (nodes);
-
-  /////////////////////////////////////////
-  // Add IP addresses.
-  NS_LOG_INFO ("Assigning IP Addresses.");
-  Ipv4AddressHelper ipv4;
-  ipv4.SetBase ("10.1.1.0", "255.255.255.0");
-  Ipv4InterfaceContainer i0i1 = ipv4.Assign (devices1);
-
-  ipv4.SetBase ("191.168.1.0", "255.255.255.0");
-  Ipv4InterfaceContainer i1i2 = ipv4.Assign (devices2);
-
-  Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
-
-  /////////////////////////////////////////
-  // Create flows.
-  NS_LOG_INFO ("Creating flows.");
-  uint32_t port = 101;
-  for (uint32_t i = 0; i < unfairFlows; ++i) {
-    sinks.push_back (CreateFlow (port + i, i1i2, nodes, durS, packet_size, "ns3::TcpBbr"));
+    leftNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[i])));
+    rightNodeChannel->SetAttribute("Delay", TimeValue(MicroSeconds(edge_delays[i])));
   }
 
-  for (uint32_t i = 0; i < otherFlows; ++i) {
-    sinks.push_back (CreateFlow (port + unfairFlows + i, i1i2, nodes, durS, packet_size, otherProto));
+  // Install stack
+  InternetStackHelper stack;
+  dumbBellTopology.InstallStack(stack);
+
+  // Assign IP Addresses
+  dumbBellTopology.AssignIpv4Addresses(Ipv4AddressHelper("10.1.0.0", "/24"),  // Left Nodes
+                                       Ipv4AddressHelper("20.1.0.0", "/24"),  // Right Nodes
+                                       Ipv4AddressHelper("30.1.0.0", "/24")); // Router address
+
+  NodeContainer leftNodes, rightNodes;
+  for (uint32_t k = 0; k < num_nodes; ++k) {
+    leftNodes.Add(dumbBellTopology.GetLeft(k));
+    rightNodes.Add(dumbBellTopology.GetRight(k));
+  }
+
+  Ptr<Node> leftRTR = dumbBellTopology.GetLeft();
+  Ptr<Node> rightRTR = dumbBellTopology.GetRight();
+  Ptr <Ipv4> ipL_RTR = leftRTR->GetObject<Ipv4>();
+  Ptr <Ipv4> ipR_RTR = rightRTR->GetObject<Ipv4>();
+
+  Ipv4StaticRoutingHelper staticRouting;
+  for (uint32_t i = 0; i < num_nodes; ++i) {
+    Ptr<Ipv4> ipv4 = leftNodes.Get(i)->GetObject<Ipv4>();
+    Ptr<Ipv4StaticRouting> routeTable = staticRouting.GetStaticRouting(ipv4);
+    routeTable->AddNetworkRouteTo(Ipv4Address("0.0.0.0"), Ipv4Mask("0.0.0.0"), 1);
+    }
+
+  for (uint32_t i = 0; i < num_nodes; ++i) {
+    Ptr<Ipv4> ipv4 = rightNodes.Get(i)->GetObject<Ipv4>();
+    Ptr<Ipv4StaticRouting> routeTable = staticRouting.GetStaticRouting(ipv4);
+    routeTable->AddNetworkRouteTo(Ipv4Address("0.0.0.0"), Ipv4Mask("0.0.0.0"), 1);
+  }
+
+  Ptr <Ipv4StaticRouting> leftRTR_routeTable = staticRouting.GetStaticRouting(ipL_RTR);
+  leftRTR_routeTable->AddNetworkRouteTo(Ipv4Address("20.0.0.0"), Ipv4Mask("/7"), 1);
+    
+  for (uint32_t i = 0; i < num_nodes; ++i) {
+    leftRTR_routeTable->AddHostRouteTo(
+      leftNodes.Get(i)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal(),
+      int(i + 2));
+  }
+
+  Ptr <Ipv4StaticRouting> rightRTR_routeTable = staticRouting.GetStaticRouting(ipR_RTR);
+  rightRTR_routeTable->AddNetworkRouteTo(Ipv4Address("10.0.0.0"), Ipv4Mask("/7"), 1);
+  for (uint32_t i = 0; i < num_nodes; ++i) {
+    rightRTR_routeTable->AddHostRouteTo(
+      rightNodes.Get(i)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal(),
+      int(i + 2));
+  }
+
+  uint32_t port = 100;
+
+  PacketSinkHelper sink("ns3::TcpSocketFactory",
+                          InetSocketAddress(Ipv4Address::GetAny(), port));
+
+  ApplicationContainer rightSinkApp = sink.Install(rightNodes);
+  rightSinkApp.Start(Seconds(START_TIME));
+  rightSinkApp.Stop(Seconds(START_TIME + durS));
+
+  for (uint32_t i = 0; i < num_nodes; ++i) {
+    sinks.push_back(DynamicCast<PacketSink>(rightSinkApp.Get(i)));
+  }
+
+  for (uint32_t i = 0; i < num_nodes; ++i) {
+    Ptr <Node> right = rightNodes.Get(i);
+    BulkSendHelper sender("ns3::TcpSocketFactory",
+                              InetSocketAddress(right->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal(),
+                                                port));
+    sender.SetAttribute("MaxBytes", UintegerValue(0));
+    sender.SetAttribute("SendSize", UintegerValue (packet_size));
+
+    // Set congestion control type
+
+    if (i < unfairFlows) {
+      sender.SetAttribute("CongestionType", StringValue("ns3::TcpBbr"));
+    } else {
+      sender.SetAttribute("CongestionType", StringValue(otherProto));
+    }
+    ApplicationContainer sendApps = sender.Install(leftNodes.Get(i));
+    sendApps.Start(Seconds(START_TIME));
+    sendApps.Stop(Seconds(START_TIME + durS));
   }
 
   /////////////////////////////////////////
@@ -290,7 +406,7 @@ int main (int argc, char *argv[])
   detailsSs <<
     bw << "-" <<
     rttUs << "us-" <<
-    queP << "p-" <<
+    btlQueP << "p-" <<
     unfairFlows << "unfair-" <<
     otherFlows << "other-" <<
     packet_size << "B-" <<
@@ -308,13 +424,13 @@ int main (int argc, char *argv[])
     AsciiTraceHelper ath;
     std::stringstream traceName;
     traceName << outDir << "/trace-" << details << ".tr";
-    p2p.EnableAsciiAll (ath.CreateFileStream (traceName.str ()));
+    p2pRouter.EnableAsciiAll (ath.CreateFileStream (traceName.str ()));
   }
   if (pcap) {
     NS_LOG_INFO ("Enabling pcap files.");
     std::stringstream pcapName;
     pcapName << outDir << "/" << details;
-    p2p.EnablePcapAll (pcapName.str (), true);
+    p2pRouter.EnablePcapAll (pcapName.str (), true);
   }
 
   Simulator::Schedule (Seconds (BBR_PRINT_PERIOD), PrintStats);

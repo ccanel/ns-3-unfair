@@ -149,8 +149,9 @@ public:
    * 
    * \param node The node on which to create the socket
    * \param tid The TypeId of a SocketFactory class to use
+   * \param congestionTypeId The typeId of congestion control
    */
-  static Ptr<Socket> CreateSocket (Ptr<Node> node, TypeId tid);
+  static Ptr<Socket> CreateSocket (Ptr<Node> node, TypeId tid, TypeId congestionTypeId = TypeId::LookupByName("ns3::TcpNewReno"));
   /**
    * \brief Get last error number.
    *

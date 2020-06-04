@@ -29,6 +29,7 @@
 #include "ns3/uinteger.h"
 #include "ns3/trace-source-accessor.h"
 #include "ns3/tcp-socket-factory.h"
+#include "ns3/tcp-congestion-ops.h"
 #include "bulk-send-application.h"
 
 namespace ns3 {
@@ -63,6 +64,10 @@ BulkSendApplication::GetTypeId (void)
     .AddAttribute ("Protocol", "The type of protocol to use.",
                    TypeIdValue (TcpSocketFactory::GetTypeId ()),
                    MakeTypeIdAccessor (&BulkSendApplication::m_tid),
+                   MakeTypeIdChecker ())
+    .AddAttribute ("CongestionType", "The type of congestion control.",
+                   TypeIdValue (TcpNewReno::GetTypeId ()),
+                   MakeTypeIdAccessor (&BulkSendApplication::m_congestion_tid),
                    MakeTypeIdChecker ())
     .AddTraceSource ("Tx", "A new packet is created and is sent",
                      MakeTraceSourceAccessor (&BulkSendApplication::m_txTrace),
@@ -117,7 +122,7 @@ void BulkSendApplication::StartApplication (void) // Called at time specified by
   // Create the socket if not already
   if (!m_socket)
     {
-      m_socket = Socket::CreateSocket (GetNode (), m_tid);
+      m_socket = Socket::CreateSocket (GetNode (), m_tid, m_congestion_tid);
 
       // Fatal error if socket type is not NS3_SOCK_STREAM or NS3_SOCK_SEQPACKET
       if (m_socket->GetSocketType () != Socket::NS3_SOCK_STREAM &&
