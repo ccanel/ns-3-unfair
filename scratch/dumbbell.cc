@@ -128,7 +128,6 @@ int main (int argc, char *argv[])
   double durS = 20;
   double warmupS = 5;
   bool pcap = false;
-  bool csv = false;
   std::string modelFlp = "";
   std::string outDir = ".";
   uint32_t unfairFlows = 1;
@@ -155,7 +154,6 @@ int main (int argc, char *argv[])
   cmd.AddValue ("experiment_duration_s", "Simulation duration (s).", durS);
   cmd.AddValue ("warmup_s", "Time before delaying ACKs (s)", warmupS);
   cmd.AddValue ("pcap", "Record a pcap trace from each port (true or false).", pcap);
-  cmd.AddValue ("csv", "Record a csv file for BBR receiver (true or false).", csv);
   cmd.AddValue ("model", "Path to the model file.", modelFlp);
   cmd.AddValue ("out_dir", "Directory in which to store output files.", outDir);
   cmd.AddValue ("unfair_flows", "Number of BBR flows.", unfairFlows);
@@ -255,9 +253,6 @@ int main (int argc, char *argv[])
   config.ConfigureDefaults ();
   // Select which TCP variant to use.
   Config::SetDefault ("ns3::TcpL4Protocol::SocketType", StringValue (otherProto));
-  // Configure the number of TcpBbr flows.
-  Config::SetDefault ("ns3::TcpL4Protocol::NumUnfair",
-                      UintegerValue (unfairFlows));
   // Set the segment size (otherwise, ns-3's default is 536).
   Config::SetDefault ("ns3::TcpSocket::SegmentSize",
                       UintegerValue (packet_size));
@@ -405,19 +400,25 @@ int main (int argc, char *argv[])
   std::stringstream detailsSs;
   detailsSs <<
     bw << "-" <<
-    rttUs << "us-" <<
+    btlDelUs << "us-" <<
     btlQueP << "p-" <<
     unfairFlows << "unfair-" <<
-    otherFlows << "other-" <<
+    otherFlows << "other-";
+
+  if (unfairFlows + otherFlows > 0) {
+    detailsSs << std::to_string(edge_delays[0]);
+
+    for (uint32_t i = 1; i < unfairFlows + otherFlows; ++i) {
+      detailsSs << "," << std::to_string(edge_delays[i]);
+    }
+
+    detailsSs << "us-";
+  }
+
+  detailsSs << 
     packet_size << "B-" <<
     durS << "s";
   std::string details = detailsSs.str ();
-
-  if (csv) {
-    Config::SetDefault ("ns3::TcpSocketBase::CsvFileName",
-                      StringValue (outDir + "/" + details + ".csv"));
-  }
-
 
   if (ENABLE_TRACE) {
     NS_LOG_INFO ("Enabling trace files.");
@@ -476,3 +477,4 @@ int main (int argc, char *argv[])
   Simulator::Destroy ();
   return 0;
 }
+
