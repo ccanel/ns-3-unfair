@@ -29,7 +29,6 @@
 
 using namespace ns3;
 
-#define ENABLE_TRACE      false     // Set to "true" to enable trace.
 #define START_TIME        0.0       // Seconds
 #define S_PORT            911       // Well-known port for server.
 #define PACKET_SIZE       1380      // Bytes; Assumes 60 bytes for the IP
@@ -108,6 +107,7 @@ int main (int argc, char *argv[])
   double durS = 20;
   double warmupS = 5;
   bool pcap = false;
+  bool trace = false;
   bool csv = false;
   std::string modelFlp = "";
   std::string outDir = ".";
@@ -126,6 +126,7 @@ int main (int argc, char *argv[])
   cmd.AddValue ("experiment_duration_s", "Simulation duration (s).", durS);
   cmd.AddValue ("warmup_s", "Time before delaying ACKs (s)", warmupS);
   cmd.AddValue ("pcap", "Record a pcap trace from each port (true or false).", pcap);
+  cmd.AddValue ("trace", "Enable tracing (true or false).", trace);
   cmd.AddValue ("csv", "Record a csv file for BBR receiver (true or false).", csv);
   cmd.AddValue ("model", "Path to the model file.", modelFlp);
   cmd.AddValue ("out_dir", "Directory in which to store output files.", outDir);
@@ -303,7 +304,7 @@ int main (int argc, char *argv[])
   }
 
 
-  if (ENABLE_TRACE) {
+  if (trace) {
     NS_LOG_INFO ("Enabling trace files.");
     AsciiTraceHelper ath;
     std::stringstream traceName;
