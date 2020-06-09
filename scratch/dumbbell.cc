@@ -3,7 +3,7 @@
 //
 //    (Left - senders)
 //       t0     t1                 (t0 = 10.1.0.1)
-//        |      |                 (t1 = 10.1.1.1) 
+//        |      |                 (t1 = 10.1.1.1)
 //       -----------
 //       | bridge1 |
 //       -----------
@@ -87,7 +87,7 @@ void PrintStats ()
 }
 
 
-void ProcessEdgeDelayString (const std::string &delay_string, std::vector<uint32_t>& edge_delays, 
+void ProcessEdgeDelayString (const std::string &delay_string, std::vector<uint32_t>& edge_delays,
                              uint32_t num_flows)
 {
   if (delay_string.at(0) == '[' && delay_string.at(delay_string.length() - 1) == ']') {
@@ -139,8 +139,8 @@ int main (int argc, char *argv[])
 
   const char *edge_delay_usage = "List of the edge delays (us) for unfair flows in the "
                                  "dumbbell topology seperated by comma."
-                                 "Be mindful that both left and right edge will have the same delay. " 
-                                 "Edges will have the default delay (500us) if not specified" 
+                                 "Be mindful that both left and right edge will have the same delay. "
+                                 "Edges will have the default delay (500us) if not specified"
                                  "(e.g. \"1000,500,1000,2000\"). Also, there's a shortcut to specify the same "
                                  "delay for all flows, using [1000] instead of comma seperated string.";
 
@@ -297,7 +297,7 @@ int main (int argc, char *argv[])
   p2pLeaf.SetDeviceAttribute ("Mtu", UintegerValue (mtu));
   p2pLeaf.SetQueue ("ns3::DropTailQueue", "MaxSize", QueueSizeValue (std::to_string(EDGE_QUEUE_SIZE) + "p"));
 
-  PointToPointDumbbellHelper dumbBellTopology(num_nodes, p2pLeaf, num_nodes, 
+  PointToPointDumbbellHelper dumbBellTopology(num_nodes, p2pLeaf, num_nodes,
                                              p2pLeaf, p2pRouter);
 
   for (uint32_t i = 0; i < num_nodes; ++i) {
@@ -346,7 +346,7 @@ int main (int argc, char *argv[])
 
   Ptr <Ipv4StaticRouting> leftRTR_routeTable = staticRouting.GetStaticRouting(ipL_RTR);
   leftRTR_routeTable->AddNetworkRouteTo(Ipv4Address("20.0.0.0"), Ipv4Mask("/7"), 1);
-    
+
   for (uint32_t i = 0; i < num_nodes; ++i) {
     leftRTR_routeTable->AddHostRouteTo(
       leftNodes.Get(i)->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal(),
@@ -415,7 +415,7 @@ int main (int argc, char *argv[])
     detailsSs << "us-";
   }
 
-  detailsSs << 
+  detailsSs <<
     packet_size << "B-" <<
     durS << "s";
   std::string details = detailsSs.str ();
@@ -477,4 +477,3 @@ int main (int argc, char *argv[])
   Simulator::Destroy ();
   return 0;
 }
-
