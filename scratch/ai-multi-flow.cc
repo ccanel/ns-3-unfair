@@ -133,7 +133,7 @@ int main (int argc, char *argv[])
   cmd.AddValue ("unfair_flows", "Number of BBR flows.", unfairFlows);
   cmd.AddValue ("other_flows", "Number of non-BBR flows.", otherFlows);
   cmd.AddValue ("other_proto", "The TCP variant to use (e.g., \"ns3::TcpCubic\") for the non-BBR flows.", otherProto);
-  cmd.AddValue ("enable", "Enable unfairness mitigation (true or false).", enableUnfair);
+  cmd.AddValue ("enable_mitigation", "Enable unfairness mitigation (true or false).", enableUnfair);
   cmd.AddValue ("fair_share_type", "How to estimate the bandwidth fair share.", fairShareType);
   cmd.AddValue ("ack_pacing_type", "How to estimate ACK pacing interval.", ackPacingType);
   cmd.Parse (argc, argv);
