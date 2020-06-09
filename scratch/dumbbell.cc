@@ -25,6 +25,8 @@
 #include <sstream>
 #include <string>
 
+#include <boost/filesystem.hpp>
+
 // ns-3 includes.
 #include "ns3/core-module.h"
 #include "ns3/point-to-point-module.h"
@@ -139,7 +141,7 @@ int main (int argc, char *argv[])
   double warmupS = 5;
   bool pcap = false;
   bool trace = false;
-  std::string outDir = ".";
+  boost::filesystem::path outDir = ".";
   const char *edge_delay_usage = "List of the edge delays (us) for unfair flows in the "
                                  "dumbbell topology seperated by comma."
                                  "Be mindful that both left and right edge will have the same delay. "
@@ -418,20 +420,25 @@ int main (int argc, char *argv[])
   detailsSs << payloadB << "B-" << durS << "s";
   std::string details = detailsSs.str ();
 
+  // Create output directory and base output filepath.
+  outDir /= details;
+  NS_ABORT_UNLESS (! boost::filesystem::exists(outDir));
+  boost::filesystem::create_directory(outDir);
+  boost::filesystem::path outFlp = outDir;
+  outFlp /= details;
+
   if (trace)
     {
       NS_LOG_INFO ("Enabling trace files.");
       AsciiTraceHelper ath;
       std::stringstream traceName;
-      traceName << outDir << "/trace-" << details << ".tr";
+      traceName << outFlp.string() << ".tr";
       p2pRouter.EnableAsciiAll (ath.CreateFileStream (traceName.str ()));
     }
   if (pcap)
     {
       NS_LOG_INFO ("Enabling pcap files.");
-      std::stringstream pcapName;
-      pcapName << outDir << "/" << details;
-      p2pRouter.EnablePcapAll (pcapName.str (), true);
+      p2pRouter.EnablePcapAll (outFlp.string (), true);
     }
 
   Simulator::Schedule (Seconds (PRINT_PERIOD), PrintStats);
