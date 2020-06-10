@@ -130,7 +130,7 @@ int main (int argc, char *argv[])
   std::string otherProto = "ns3::TcpNewReno";
   std::stringstream delaySs;
   delaySs << "[" << EDGE_DELAY_US << "]";
-  std::string unfairEdgeDelaysUs = delaySs.str();
+  std::string unfairEdgeDelaysUs = delaySs.str ();
   std::string otherEdgeDelaysUs = unfairEdgeDelaysUs;
   uint32_t payloadB = PAYLOAD_SIZE;
   bool enableUnfair = false;
@@ -247,7 +247,6 @@ int main (int argc, char *argv[])
                       StringValue (fairShareType));
   Config::SetDefault ("ns3::TcpSocketBase::AckPacingType",
                       StringValue (ackPacingType));
-  // updateAckPeriod (MicroSeconds(0));
   Config::SetDefault ("ns3::TcpSocketBase::AckPeriod",
                       TimeValue (MicroSeconds (0)));
   // Configure TcpSocketBase with the model filepath.
@@ -398,6 +397,7 @@ int main (int argc, char *argv[])
   /////////////////////////////////////////
   // Setup tracing (as appropriate).
   NS_LOG_INFO ("Configuring tracing.");
+
   std::stringstream detailsSs;
   detailsSs <<
     btlBw << "-" <<
@@ -422,8 +422,8 @@ int main (int argc, char *argv[])
 
   // Create output directory and base output filepath.
   outDir /= details;
-  NS_ABORT_UNLESS (! boost::filesystem::exists(outDir));
-  boost::filesystem::create_directory(outDir);
+  NS_ABORT_UNLESS (! boost::filesystem::exists (outDir));
+  boost::filesystem::create_directory (outDir);
   boost::filesystem::path outFlp = outDir;
   outFlp /= details;
 
@@ -432,7 +432,7 @@ int main (int argc, char *argv[])
       NS_LOG_INFO ("Enabling trace files.");
       AsciiTraceHelper ath;
       std::stringstream traceName;
-      traceName << outFlp.string() << ".tr";
+      traceName << outFlp.string () << ".tr";
       p2pRouter.EnableAsciiAll (ath.CreateFileStream (traceName.str ()));
     }
   if (pcap)
