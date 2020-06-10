@@ -169,6 +169,8 @@ int main (int argc, char *argv[])
   cmd.AddValue ("out_dir", "Directory in which to store output files.", outDir);
   cmd.Parse (argc, argv);
 
+  // Must specify at least one flow.
+  NS_ABORT_UNLESS (unfairFlows + otherFlows > 0);
   // Verify the protofol specified for the non-BBR flows.
   NS_ABORT_UNLESS (otherProto == "ns3::TcpNewReno" ||
                    otherProto == "ns3::TcpCubic" ||
