@@ -406,20 +406,15 @@ int main (int argc, char *argv[])
     btlDel << "-" <<
     btlQueP << "p-" <<
     unfairFlows << "unfair-" <<
-    otherFlows << "other-";
-
-  if (unfairFlows + otherFlows > 0)
+    otherFlows << "other-" <<
+    edgeDelays[0];
+  for (uint32_t i = 1; i < unfairFlows + otherFlows; ++i)
     {
-      detailsSs << std::to_string (edgeDelays[0]);
-
-      for (uint32_t i = 1; i < unfairFlows + otherFlows; ++i)
-        {
-          detailsSs << "," << std::to_string (edgeDelays[i]);
-        }
-
-      detailsSs << "us-";
+      detailsSs << "," << edgeDelays[i];
     }
-  detailsSs << payloadB << "B-" << durS << "s";
+  detailsSs << "us-" <<
+    payloadB << "B-" <<
+    durS << "s";
   std::string details = detailsSs.str ();
 
   // Create output directory and base output filepath.
