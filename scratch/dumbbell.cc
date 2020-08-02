@@ -72,14 +72,22 @@ void PrintStats ()
   NS_LOG_INFO (Simulator::Now ().GetSeconds () << " s:");
   for (auto& sink : sinks)
     {
-      NS_ABORT_UNLESS (sink->GetSockets ().size () == 1);
-      Ptr<TcpSocketBase> sock = DynamicCast<TcpSocketBase> (
-        sink->GetSockets ().front ());
-      TcpSocketBase::Stats stats = sock->GetStats ();
-      NS_LOG_INFO ("  " << (sock->GetReceivingBbr () ? "BBR" : "Other") <<
-                   " - avg tput: " << stats.tputMbps <<
-                   " Mb/s, avg lat: " << stats.avgLat.GetMicroSeconds () <<
-                   " us, pending ACKs: " << sock->GetNumPendingAcks ());
+      int num_socks = sink->GetSockets ().size ();
+      if (num_socks == 0)
+        {
+          NS_LOG_WARN ("No sockets for this sink!");
+        }
+      else
+        {
+          NS_ABORT_UNLESS (num_socks == 1);
+          Ptr<TcpSocketBase> sock = DynamicCast<TcpSocketBase> (
+            sink->GetSockets ().front ());
+          TcpSocketBase::Stats stats = sock->GetStats ();
+          NS_LOG_INFO ("  " << (sock->GetReceivingBbr () ? "BBR" : "Other") <<
+                       " - avg tput: " << stats.tputMbps <<
+                       " Mb/s, avg lat: " << stats.avgLat.GetMicroSeconds () <<
+                       " us, pending ACKs: " << sock->GetNumPendingAcks ());
+        }
     }
   Simulator::Schedule (Seconds (PRINT_PERIOD), PrintStats);
 }
