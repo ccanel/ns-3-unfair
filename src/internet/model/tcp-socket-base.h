@@ -40,7 +40,7 @@
 #include "rtt-estimator.h"
 #include "tcp-l4-protocol.h"
 
-#include <torch/script.h>
+// #include <torch/script.h>
 
 namespace ns3 {
 
@@ -1378,7 +1378,7 @@ protected:
   std::string m_modelName                     {""};
   std::string m_csvFileName                   {""};
   std::ofstream m_csvFile;
-  torch::jit::script::Module *m_net      {nullptr};
+  // torch::jit::script::Module *m_net      {nullptr};
 
 
 public:
