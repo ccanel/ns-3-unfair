@@ -21,10 +21,11 @@
 #ifndef TCP_SOCKET_BASE_H
 #define TCP_SOCKET_BASE_H
 
-#include <stdint.h>
-#include <queue>
 #include <iostream>
 #include <fstream>
+#include <queue>
+#include <stdint.h>
+#include <unordered_set>
 
 #include "ns3/traced-value.h"
 #include "ns3/tcp-socket.h"
