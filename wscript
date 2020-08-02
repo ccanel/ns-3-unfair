@@ -724,6 +724,11 @@ def create_ns3_program(bld, name, dependencies=('core',)):
     program.includes = "#"
     program.use = program.ns3_module_dependencies
 
+    # Add boost.
+    program.env.append_value('LINKFLAGS', '-L/usr/lib/x86_64-linux-gnu')
+    program.env.append_value("LIB", "boost_filesystem")
+    program.env.append_value("LIB", "boost_system")
+
     # Add libtorch.
     program.env.append_value('CPPFLAGS', '-I/opt/libtorch/include')
     program.env.append_value('LINKFLAGS', '-L/opt/libtorch/lib')

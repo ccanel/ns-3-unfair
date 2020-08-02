@@ -442,8 +442,8 @@ TcpSocketBase::TcpSocketBase (const TcpSocketBase& sock)
     m_receivingBbr (sock.m_receivingBbr),
     m_ackPeriod (sock.m_ackPeriod),
     m_modelName (sock.m_modelName),
-    m_csvFileName (sock.m_csvFileName),
-    m_net (sock.m_net)
+    m_csvFileName (sock.m_csvFileName) //,
+    // m_net (sock.m_net)
     // Don't copy pendingAcks - don't want duplciate acks
     // Don't copy m_lossCounts and m_arrivalTimes because we want to reset those
     // for a new flow.
@@ -4399,10 +4399,11 @@ TcpSocketBase::EstimateAckPeriodModel (double targetTputMbps)
 
   // TODO: This scaling assumes a single input and output feature.
   // TODO: There is a bug here.
-  double out = m_net->forward (std::vector<torch::jit::IValue> ({
-        Scale (targetTputMbps * 1e6,
-               m_scaleParams.input[0].min, m_scaleParams.input[0].max, 0, 1)}))
-    .toTensor ().item ().to<double> ();
+  // double out = m_net->forward (std::vector<torch::jit::IValue> ({
+  //       Scale (targetTputMbps * 1e6,
+  //              m_scaleParams.input[0].min, m_scaleParams.input[0].max, 0, 1)}))
+  //   .toTensor ().item ().to<double> ();
+  double out = 0;
   double out_unscaled = Scale (out, 0, 1, m_scaleParams.output[0].min,
                                m_scaleParams.output[0].max);
   NS_LOG_DEBUG ("raw model output: " << out << ", unscaled: " << out_unscaled);
@@ -4751,15 +4752,15 @@ TcpSocketBase::SetModel (std::string modelFlp)
   ss << modelFlp.substr (0, lastDot + 1) << "csv";
   m_scaleParams = ReadScaleParams (ss.str ());
 
-  try
-    {
-      torch::jit::script::Module net = torch::jit::load (modelFlp);
-      m_net = &net;
-    }
-  catch (const c10::Error& e)
-    {
-      NS_LOG_ERROR ("Error loading model " << modelFlp << ":\n" << e.what ());
-    }
+  // try
+  //   {
+  //     torch::jit::script::Module net = torch::jit::load (modelFlp);
+  //     m_net = &net;
+  //   }
+  // catch (const c10::Error& e)
+  //   {
+  //     NS_LOG_ERROR ("Error loading model " << modelFlp << ":\n" << e.what ());
+  //   }
 }
 
 std::string

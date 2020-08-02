@@ -21,10 +21,11 @@
 #ifndef TCP_SOCKET_BASE_H
 #define TCP_SOCKET_BASE_H
 
-#include <stdint.h>
-#include <queue>
 #include <iostream>
 #include <fstream>
+#include <queue>
+#include <stdint.h>
+#include <unordered_set>
 
 #include "ns3/traced-value.h"
 #include "ns3/tcp-socket.h"
@@ -40,7 +41,7 @@
 #include "rtt-estimator.h"
 #include "tcp-l4-protocol.h"
 
-#include <torch/script.h>
+// #include <torch/script.h>
 
 namespace ns3 {
 
@@ -1378,7 +1379,7 @@ protected:
   std::string m_modelName                     {""};
   std::string m_csvFileName                   {""};
   std::ofstream m_csvFile;
-  torch::jit::script::Module *m_net      {nullptr};
+  // torch::jit::script::Module *m_net      {nullptr};
 
 
 public:

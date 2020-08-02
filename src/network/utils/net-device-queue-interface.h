@@ -377,7 +377,7 @@ NetDeviceQueue::PacketEnqueued (Ptr<Queue<Item> > queue,
     {
       NS_LOG_DEBUG ("The device queue is being stopped (" << queue->GetNPackets ()
                     << " packets and " << queue->GetNBytes () << " bytes inside)");
-      ndqi->GetTxQueue (txq)->Stop ();
+      //ndqi->GetTxQueue (txq)->Stop ();
     }
 }
 
@@ -426,8 +426,7 @@ NetDeviceQueue::PacketDiscarded (Ptr<Queue<Item> > queue,
 
   NS_LOG_ERROR ("BUG! No room in the device queue for the received packet! ("
                 << queue->GetNPackets () << " packets and " << queue->GetNBytes () << " bytes inside)");
-
-  ndqi->GetTxQueue (txq)->Stop ();
+  //ndqi->GetTxQueue (txq)->Stop ();
 }
 
 } // namespace ns3
