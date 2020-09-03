@@ -237,9 +237,9 @@ int main (int argc, char *argv[])
   NS_LOG_INFO ("Setting configuration parameters.");
   ConfigStore config;
   config.ConfigureDefaults ();
-  // Select which TCP variant to use.
-  Config::SetDefault ("ns3::TcpL4Protocol::SocketType",
-                      StringValue (otherProto));
+  // // Select which TCP variant to use.
+  // Config::SetDefault ("ns3::TcpL4Protocol::SocketType",
+  //                     StringValue (otherProto));
   // Set the segment size (otherwise, ns-3's default is 536).
   Config::SetDefault ("ns3::TcpSocket::SegmentSize",
                       UintegerValue (payloadB));
