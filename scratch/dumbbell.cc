@@ -206,7 +206,7 @@ int main (int argc, char *argv[])
 
   /////////////////////////////////////////
   // Turn on logging and report parameters.
-  // Note: For BBR', other components that may be of interest include "TcpBbr"
+  // Note: For BBR, other components that may be of interest include "TcpBbr"
   //       and "BbrState".
   LogComponentEnable ("main", LOG_LEVEL_INFO);
 
@@ -261,7 +261,8 @@ int main (int argc, char *argv[])
                       TimeValue (MicroSeconds (0)));
   // Configure TcpSocketBase with the model filepath.
   Config::SetDefault ("ns3::TcpSocketBase::Model", StringValue (modelFlp));
-  // Configure TcpSocketBase with the model filepath.
+  // Configure TcpSocketBase with how long to wait before beginning
+  // unfairness mitigation.
   Config::SetDefault ("ns3::TcpSocketBase::UnfairMitigationDelayStart",
                       TimeValue (Seconds (warmupS)));
   // Configure the number of packet records that TcpSocketBase will maintain.
