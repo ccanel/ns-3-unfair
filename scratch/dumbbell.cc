@@ -135,6 +135,7 @@ int main (int argc, char *argv[])
   uint32_t btlQueP = 1000;
   uint32_t unfairFlows = 1;
   uint32_t otherFlows = 0;
+  std::string unfairProto = "ns3::TcpBbr";
   std::string otherProto = "ns3::TcpNewReno";
   std::stringstream delaySs;
   delaySs << "[" << EDGE_DELAY_US << "]";
@@ -160,9 +161,10 @@ int main (int argc, char *argv[])
   cmd.AddValue ("bottleneck_bandwidth_Mbps", "Bandwidth for the bottleneck link (Mbps).", btlBwMbps);
   cmd.AddValue ("bottleneck_delay_us", "Delay across the bottleneck link (us).", btlDelUs);
   cmd.AddValue ("bottleneck_queue_p", "Router queue size at bottleneck link (packets).", btlQueP);
-  cmd.AddValue ("unfair_flows", "Number of BBR flows.", unfairFlows);
-  cmd.AddValue ("other_flows", "Number of non-BBR flows.", otherFlows);
-  cmd.AddValue ("other_proto", "The TCP variant to use (e.g., \"ns3::TcpCubic\") for the non-BBR flows.", otherProto);
+  cmd.AddValue ("unfair_flows", "Number of \"unfair\" flows.", unfairFlows);
+  cmd.AddValue ("unfair_proto", "The TCP variant to use (e.g., \"ns3::TcpBbr\") for the \"unfair\" flows.", unfairProto);
+  cmd.AddValue ("other_flows", "Number of \"fair\" flows.", otherFlows);
+  cmd.AddValue ("other_proto", "The TCP variant to use (e.g., \"ns3::TcpCubic\") for the \"fair\" flows.", otherProto);
   cmd.AddValue ("unfair_edge_delays_us", edge_delay_usage, unfairEdgeDelaysUs);
   cmd.AddValue ("other_edge_delays_us", "Edge delays for other flows (us). See '--unfair_edge_delay_us' for more info.", otherEdgeDelaysUs);
   cmd.AddValue ("payload_B", "Size of a single packet payload (bytes)", payloadB);
@@ -179,7 +181,10 @@ int main (int argc, char *argv[])
 
   // Must specify at least one flow.
   NS_ABORT_UNLESS (unfairFlows + otherFlows > 0);
-  // Verify the protofol specified for the non-BBR flows.
+  // Verify the specified protocols.
+  NS_ABORT_UNLESS (unfairProto == "ns3::TcpNewReno" ||
+                   unfairProto == "ns3::TcpCubic" ||
+                   unfairProto == "ns3::TcpBbr");
   NS_ABORT_UNLESS (otherProto == "ns3::TcpNewReno" ||
                    otherProto == "ns3::TcpCubic" ||
                    otherProto == "ns3::TcpBbr");
@@ -216,6 +221,7 @@ int main (int argc, char *argv[])
                "\nBottleneck router queue capacity (p): "<< btlQueP <<
                "\nEdge bandwidth: " << EDGE_BW <<
                "\nUnfair flows: " << unfairFlows <<
+               "\nUnfair protocol: " << unfairProto <<
                "\nOther flows: " << otherFlows <<
                "\nOther protocol: " << otherProto <<
                "\nUnfair flows edge delays (us): " << unfairEdgeDelaysUs <<
@@ -390,10 +396,12 @@ int main (int argc, char *argv[])
       sender.SetAttribute ("MaxBytes", UintegerValue (0));
       sender.SetAttribute ("SendSize", UintegerValue (payloadB));
 
-      // Set congestion control type
+      // Set congestion control type. The first unfairFlows flows will use the
+      // unfairProto protocol, while the remaining flows will use the otherProto
+      // protocol.
       if (i < unfairFlows)
         {
-          sender.SetAttribute ("CongestionType", StringValue ("ns3::TcpBbr"));
+          sender.SetAttribute ("CongestionType", StringValue (unfairProto));
         }
       else
         {
