@@ -436,8 +436,10 @@ int main (int argc, char *argv[])
 
   // Create output directory and base output filepath.
   outDir /= details;
+  NS_LOG_DEBUG ("Verifying that output directory does not exist: " << outDir);
   NS_ABORT_UNLESS (! boost::filesystem::exists (outDir));
-  boost::filesystem::create_directory (outDir);
+  NS_LOG_DEBUG ("Creating output directory: " << outDir);
+  boost::filesystem::create_directories (outDir);
   boost::filesystem::path outFlp = outDir;
   outFlp /= details;
 
