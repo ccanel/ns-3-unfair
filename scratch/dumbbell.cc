@@ -485,13 +485,21 @@ int main (int argc, char *argv[])
   NS_LOG_INFO ("Flows:");
   for (auto& sink : sinks)
     {
-      double tputMbps = sink->GetTotalRx () * 8 / durS / 1e6;
-      sumTputMbps += tputMbps;
-      sumTputMbpsSq += pow (tputMbps, 2);
-      Ptr<TcpSocketBase> sock = DynamicCast<TcpSocketBase> (
-        sink->GetSockets ().front ());
-      NS_LOG_INFO ("  " << (sock->GetReceivingBbr () ? "BBR" : "Other") <<
-                   " - avg tput: " << tputMbps << " Mb/s");
+      int num_socks = sink->GetSockets ().size ();
+      if (num_socks == 0)
+        {
+          NS_LOG_WARN ("No sockets for this sink!");
+        }
+      else
+        {
+          double tputMbps = sink->GetTotalRx () * 8 / durS / 1e6;
+          sumTputMbps += tputMbps;
+          sumTputMbpsSq += pow (tputMbps, 2);
+          Ptr<TcpSocketBase> sock = DynamicCast<TcpSocketBase> (
+            sink->GetSockets ().front ());
+          NS_LOG_INFO ("  " << (sock->GetReceivingBbr () ? "BBR" : "Other") <<
+                       " - avg tput: " << tputMbps << " Mb/s");
+        }
     }
   NS_LOG_INFO ("Jain's fairness index: " <<
                pow (sumTputMbps, 2) / (sinks.size () * sumTputMbpsSq));
