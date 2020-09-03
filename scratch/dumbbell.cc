@@ -151,12 +151,12 @@ int main (int argc, char *argv[])
   bool pcap = false;
   bool trace = false;
   boost::filesystem::path outDir = ".";
-  const char *edge_delay_usage = "List of the edge delays (us) for unfair flows in the "
-                                 "dumbbell topology seperated by comma."
-                                 "Be mindful that both left and right edge will have the same delay. "
-                                 "Edges will have the default delay (500us) if not specified"
-                                 "(e.g. \"1000,500,1000,2000\"). Also, there's a shortcut to specify the same "
-                                 "delay for all flows, using [1000] instead of comma seperated string.";
+  const char *edge_delay_usage = "List of the edge delays (us) for \"unfair\" flows in the "
+                                 "dumbbell topology, seperated by a comma (e.g. \"1000,500,1000,2000\")."
+                                 "Be mindful that both the \"left\" and \"right\" edges will have the same delay. "
+                                 "Edges will have the default delay (500us) if this option is not specified."
+                                 "Also, there is a shortcut to specify the same delay for all flows, using "
+                                 "[1000] instead of a comma-seperated string.";
   CommandLine cmd;
   cmd.AddValue ("bottleneck_bandwidth_Mbps", "Bandwidth for the bottleneck link (Mbps).", btlBwMbps);
   cmd.AddValue ("bottleneck_delay_us", "Delay across the bottleneck link (us).", btlDelUs);
