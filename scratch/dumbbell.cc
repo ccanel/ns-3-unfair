@@ -134,13 +134,13 @@ int main (int argc, char *argv[])
   double btlDelUs = 5000;
   uint32_t btlQueP = 1000;
   uint32_t unfairFlows = 1;
-  uint32_t otherFlows = 0;
+  uint32_t fairFlows = 0;
   std::string unfairProto = "ns3::TcpBbr";
-  std::string otherProto = "ns3::TcpNewReno";
+  std::string fairProto = "ns3::TcpNewReno";
   std::stringstream delaySs;
   delaySs << "[" << EDGE_DELAY_US << "]";
   std::string unfairEdgeDelaysUs = delaySs.str ();
-  std::string otherEdgeDelaysUs = unfairEdgeDelaysUs;
+  std::string fairEdgeDelaysUs = unfairEdgeDelaysUs;
   uint32_t payloadB = PAYLOAD_SIZE;
   bool enableUnfair = false;
   std::string fairShareType = "Mathis";
@@ -163,10 +163,10 @@ int main (int argc, char *argv[])
   cmd.AddValue ("bottleneck_queue_p", "Router queue size at bottleneck link (packets).", btlQueP);
   cmd.AddValue ("unfair_flows", "Number of \"unfair\" flows.", unfairFlows);
   cmd.AddValue ("unfair_proto", "The TCP variant to use (e.g., \"ns3::TcpBbr\") for the \"unfair\" flows.", unfairProto);
-  cmd.AddValue ("other_flows", "Number of \"fair\" flows.", otherFlows);
-  cmd.AddValue ("other_proto", "The TCP variant to use (e.g., \"ns3::TcpCubic\") for the \"fair\" flows.", otherProto);
+  cmd.AddValue ("fair_flows", "Number of \"fair\" flows.", fairFlows);
+  cmd.AddValue ("fair_proto", "The TCP variant to use (e.g., \"ns3::TcpCubic\") for the \"fair\" flows.", fairProto);
   cmd.AddValue ("unfair_edge_delays_us", edge_delay_usage, unfairEdgeDelaysUs);
-  cmd.AddValue ("other_edge_delays_us", "Edge delays for other flows (us). See '--unfair_edge_delay_us' for more info.", otherEdgeDelaysUs);
+  cmd.AddValue ("fair_edge_delays_us", "Edge delays for the \"fair\" flows (us). See '--unfair_edge_delay_us' for more info.", fairEdgeDelaysUs);
   cmd.AddValue ("payload_B", "Size of a single packet payload (bytes)", payloadB);
   cmd.AddValue ("enable_mitigation", "Enable unfairness mitigation (true or false).", enableUnfair);
   cmd.AddValue ("fair_share_type", "How to estimate the bandwidth fair share.", fairShareType);
@@ -180,18 +180,18 @@ int main (int argc, char *argv[])
   cmd.Parse (argc, argv);
 
   // Must specify at least one flow.
-  NS_ABORT_UNLESS (unfairFlows + otherFlows > 0);
+  NS_ABORT_UNLESS (unfairFlows + fairFlows > 0);
   // Verify the specified protocols.
   NS_ABORT_UNLESS (unfairProto == "ns3::TcpNewReno" ||
                    unfairProto == "ns3::TcpCubic" ||
                    unfairProto == "ns3::TcpBbr");
-  NS_ABORT_UNLESS (otherProto == "ns3::TcpNewReno" ||
-                   otherProto == "ns3::TcpCubic" ||
-                   otherProto == "ns3::TcpBbr");
+  NS_ABORT_UNLESS (fairProto == "ns3::TcpNewReno" ||
+                   fairProto == "ns3::TcpCubic" ||
+                   fairProto == "ns3::TcpBbr");
   // Make sure that the MTU is large enough.
   uint32_t mtu = payloadB + HEADER_AND_OPTIONS;
   // Number of nodes.
-  uint32_t numNodes = unfairFlows + otherFlows;
+  uint32_t numNodes = unfairFlows + fairFlows;
   // Bottleneck link bandwidth.
   std::stringstream btlBwSs;
   btlBwSs << btlBwMbps << "Mbps";
@@ -207,7 +207,7 @@ int main (int argc, char *argv[])
   // Edge delays.
   std::vector<uint32_t> edgeDelays;
   ParseEdgeDelayString (unfairEdgeDelaysUs, edgeDelays, unfairFlows);
-  ParseEdgeDelayString (otherEdgeDelaysUs, edgeDelays, otherFlows);
+  ParseEdgeDelayString (fairEdgeDelaysUs, edgeDelays, fairFlows);
 
   /////////////////////////////////////////
   // Turn on logging and report parameters.
@@ -222,10 +222,10 @@ int main (int argc, char *argv[])
                "\nEdge bandwidth: " << EDGE_BW <<
                "\nUnfair flows: " << unfairFlows <<
                "\nUnfair protocol: " << unfairProto <<
-               "\nOther flows: " << otherFlows <<
-               "\nOther protocol: " << otherProto <<
+               "\nFair flows: " << fairFlows <<
+               "\nFair protocol: " << fairProto <<
                "\nUnfair flows edge delays (us): " << unfairEdgeDelaysUs <<
-               "\nOther flows edge delays (us): " << otherEdgeDelaysUs <<
+               "\nFair flows edge delays (us): " << fairEdgeDelaysUs <<
                "\nPacket payload size (B): " << payloadB <<
                "\nEnable unfairness mitigation: " <<
                (enableUnfair ? "yes" : "no") <<
@@ -245,7 +245,7 @@ int main (int argc, char *argv[])
   config.ConfigureDefaults ();
   // // Select which TCP variant to use.
   // Config::SetDefault ("ns3::TcpL4Protocol::SocketType",
-  //                     StringValue (otherProto));
+  //                     StringValue (fairProto));
   // Set the segment size (otherwise, ns-3's default is 536).
   Config::SetDefault ("ns3::TcpSocket::SegmentSize",
                       UintegerValue (payloadB));
@@ -397,7 +397,7 @@ int main (int argc, char *argv[])
       sender.SetAttribute ("SendSize", UintegerValue (payloadB));
 
       // Set congestion control type. The first unfairFlows flows will use the
-      // unfairProto protocol, while the remaining flows will use the otherProto
+      // unfairProto protocol, while the remaining flows will use the fairProto
       // protocol.
       if (i < unfairFlows)
         {
@@ -405,7 +405,7 @@ int main (int argc, char *argv[])
         }
       else
         {
-          sender.SetAttribute ("CongestionType", StringValue (otherProto));
+          sender.SetAttribute ("CongestionType", StringValue (fairProto));
         }
 
       ApplicationContainer sendApps = sender.Install (leftNodes.Get (i));
@@ -423,9 +423,9 @@ int main (int argc, char *argv[])
     btlDel << "-" <<
     btlQueP << "p-" <<
     unfairFlows << "unfair-" <<
-    otherFlows << "other-" <<
+    fairFlows << "fair-" <<
     edgeDelays[0];
-  for (uint32_t i = 1; i < unfairFlows + otherFlows; ++i)
+  for (uint32_t i = 1; i < unfairFlows + fairFlows; ++i)
     {
       detailsSs << "," << edgeDelays[i];
     }
