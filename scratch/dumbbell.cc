@@ -134,12 +134,13 @@ int main (int argc, char *argv[])
   double btlDelUs = 5000;
   uint32_t btlQueP = 1000;
   uint32_t unfairFlows = 1;
-  uint32_t otherFlows = 0;
-  std::string otherProto = "ns3::TcpNewReno";
+  uint32_t fairFlows = 0;
+  std::string unfairProto = "ns3::TcpBbr";
+  std::string fairProto = "ns3::TcpNewReno";
   std::stringstream delaySs;
   delaySs << "[" << EDGE_DELAY_US << "]";
   std::string unfairEdgeDelaysUs = delaySs.str ();
-  std::string otherEdgeDelaysUs = unfairEdgeDelaysUs;
+  std::string fairEdgeDelaysUs = unfairEdgeDelaysUs;
   uint32_t payloadB = PAYLOAD_SIZE;
   bool enableUnfair = false;
   std::string fairShareType = "Mathis";
@@ -150,21 +151,22 @@ int main (int argc, char *argv[])
   bool pcap = false;
   bool trace = false;
   boost::filesystem::path outDir = ".";
-  const char *edge_delay_usage = "List of the edge delays (us) for unfair flows in the "
-                                 "dumbbell topology seperated by comma."
-                                 "Be mindful that both left and right edge will have the same delay. "
-                                 "Edges will have the default delay (500us) if not specified"
-                                 "(e.g. \"1000,500,1000,2000\"). Also, there's a shortcut to specify the same "
-                                 "delay for all flows, using [1000] instead of comma seperated string.";
+  const char *edge_delay_usage = "List of the edge delays (us) for \"unfair\" flows in the "
+                                 "dumbbell topology, seperated by a comma (e.g. \"1000,500,1000,2000\")."
+                                 "Be mindful that both the \"left\" and \"right\" edges will have the same delay. "
+                                 "Edges will have the default delay (500us) if this option is not specified."
+                                 "Also, there is a shortcut to specify the same delay for all flows, using "
+                                 "[1000] instead of a comma-seperated string.";
   CommandLine cmd;
   cmd.AddValue ("bottleneck_bandwidth_Mbps", "Bandwidth for the bottleneck link (Mbps).", btlBwMbps);
   cmd.AddValue ("bottleneck_delay_us", "Delay across the bottleneck link (us).", btlDelUs);
   cmd.AddValue ("bottleneck_queue_p", "Router queue size at bottleneck link (packets).", btlQueP);
-  cmd.AddValue ("unfair_flows", "Number of BBR flows.", unfairFlows);
-  cmd.AddValue ("other_flows", "Number of non-BBR flows.", otherFlows);
-  cmd.AddValue ("other_proto", "The TCP variant to use (e.g., \"ns3::TcpCubic\") for the non-BBR flows.", otherProto);
+  cmd.AddValue ("unfair_flows", "Number of \"unfair\" flows.", unfairFlows);
+  cmd.AddValue ("unfair_proto", "The TCP variant to use (e.g., \"ns3::TcpBbr\") for the \"unfair\" flows.", unfairProto);
+  cmd.AddValue ("fair_flows", "Number of \"fair\" flows.", fairFlows);
+  cmd.AddValue ("fair_proto", "The TCP variant to use (e.g., \"ns3::TcpCubic\") for the \"fair\" flows.", fairProto);
   cmd.AddValue ("unfair_edge_delays_us", edge_delay_usage, unfairEdgeDelaysUs);
-  cmd.AddValue ("other_edge_delays_us", "Edge delays for other flows (us). See '--unfair_edge_delay_us' for more info.", otherEdgeDelaysUs);
+  cmd.AddValue ("fair_edge_delays_us", "Edge delays for the \"fair\" flows (us). See '--unfair_edge_delay_us' for more info.", fairEdgeDelaysUs);
   cmd.AddValue ("payload_B", "Size of a single packet payload (bytes)", payloadB);
   cmd.AddValue ("enable_mitigation", "Enable unfairness mitigation (true or false).", enableUnfair);
   cmd.AddValue ("fair_share_type", "How to estimate the bandwidth fair share.", fairShareType);
@@ -178,15 +180,18 @@ int main (int argc, char *argv[])
   cmd.Parse (argc, argv);
 
   // Must specify at least one flow.
-  NS_ABORT_UNLESS (unfairFlows + otherFlows > 0);
-  // Verify the protofol specified for the non-BBR flows.
-  NS_ABORT_UNLESS (otherProto == "ns3::TcpNewReno" ||
-                   otherProto == "ns3::TcpCubic" ||
-                   otherProto == "ns3::TcpBbr");
+  NS_ABORT_UNLESS (unfairFlows + fairFlows > 0);
+  // Verify the specified protocols.
+  NS_ABORT_UNLESS (unfairProto == "ns3::TcpNewReno" ||
+                   unfairProto == "ns3::TcpCubic" ||
+                   unfairProto == "ns3::TcpBbr");
+  NS_ABORT_UNLESS (fairProto == "ns3::TcpNewReno" ||
+                   fairProto == "ns3::TcpCubic" ||
+                   fairProto == "ns3::TcpBbr");
   // Make sure that the MTU is large enough.
   uint32_t mtu = payloadB + HEADER_AND_OPTIONS;
   // Number of nodes.
-  uint32_t numNodes = unfairFlows + otherFlows;
+  uint32_t numNodes = unfairFlows + fairFlows;
   // Bottleneck link bandwidth.
   std::stringstream btlBwSs;
   btlBwSs << btlBwMbps << "Mbps";
@@ -202,11 +207,11 @@ int main (int argc, char *argv[])
   // Edge delays.
   std::vector<uint32_t> edgeDelays;
   ParseEdgeDelayString (unfairEdgeDelaysUs, edgeDelays, unfairFlows);
-  ParseEdgeDelayString (otherEdgeDelaysUs, edgeDelays, otherFlows);
+  ParseEdgeDelayString (fairEdgeDelaysUs, edgeDelays, fairFlows);
 
   /////////////////////////////////////////
   // Turn on logging and report parameters.
-  // Note: For BBR', other components that may be of interest include "TcpBbr"
+  // Note: For BBR, other components that may be of interest include "TcpBbr"
   //       and "BbrState".
   LogComponentEnable ("main", LOG_LEVEL_INFO);
 
@@ -216,10 +221,11 @@ int main (int argc, char *argv[])
                "\nBottleneck router queue capacity (p): "<< btlQueP <<
                "\nEdge bandwidth: " << EDGE_BW <<
                "\nUnfair flows: " << unfairFlows <<
-               "\nOther flows: " << otherFlows <<
-               "\nOther protocol: " << otherProto <<
+               "\nUnfair protocol: " << unfairProto <<
+               "\nFair flows: " << fairFlows <<
+               "\nFair protocol: " << fairProto <<
                "\nUnfair flows edge delays (us): " << unfairEdgeDelaysUs <<
-               "\nOther flows edge delays (us): " << otherEdgeDelaysUs <<
+               "\nFair flows edge delays (us): " << fairEdgeDelaysUs <<
                "\nPacket payload size (B): " << payloadB <<
                "\nEnable unfairness mitigation: " <<
                (enableUnfair ? "yes" : "no") <<
@@ -237,9 +243,9 @@ int main (int argc, char *argv[])
   NS_LOG_INFO ("Setting configuration parameters.");
   ConfigStore config;
   config.ConfigureDefaults ();
-  // Select which TCP variant to use.
-  Config::SetDefault ("ns3::TcpL4Protocol::SocketType",
-                      StringValue (otherProto));
+  // // Select which TCP variant to use.
+  // Config::SetDefault ("ns3::TcpL4Protocol::SocketType",
+  //                     StringValue (fairProto));
   // Set the segment size (otherwise, ns-3's default is 536).
   Config::SetDefault ("ns3::TcpSocket::SegmentSize",
                       UintegerValue (payloadB));
@@ -261,7 +267,8 @@ int main (int argc, char *argv[])
                       TimeValue (MicroSeconds (0)));
   // Configure TcpSocketBase with the model filepath.
   Config::SetDefault ("ns3::TcpSocketBase::Model", StringValue (modelFlp));
-  // Configure TcpSocketBase with the model filepath.
+  // Configure TcpSocketBase with how long to wait before beginning
+  // unfairness mitigation.
   Config::SetDefault ("ns3::TcpSocketBase::UnfairMitigationDelayStart",
                       TimeValue (Seconds (warmupS)));
   // Configure the number of packet records that TcpSocketBase will maintain.
@@ -389,14 +396,16 @@ int main (int argc, char *argv[])
       sender.SetAttribute ("MaxBytes", UintegerValue (0));
       sender.SetAttribute ("SendSize", UintegerValue (payloadB));
 
-      // Set congestion control type
+      // Set congestion control type. The first unfairFlows flows will use the
+      // unfairProto protocol, while the remaining flows will use the fairProto
+      // protocol.
       if (i < unfairFlows)
         {
-          sender.SetAttribute ("CongestionType", StringValue ("ns3::TcpBbr"));
+          sender.SetAttribute ("CongestionType", StringValue (unfairProto));
         }
       else
         {
-          sender.SetAttribute ("CongestionType", StringValue (otherProto));
+          sender.SetAttribute ("CongestionType", StringValue (fairProto));
         }
 
       ApplicationContainer sendApps = sender.Install (leftNodes.Get (i));
@@ -414,9 +423,9 @@ int main (int argc, char *argv[])
     btlDel << "-" <<
     btlQueP << "p-" <<
     unfairFlows << "unfair-" <<
-    otherFlows << "other-" <<
+    fairFlows << "fair-" <<
     edgeDelays[0];
-  for (uint32_t i = 1; i < unfairFlows + otherFlows; ++i)
+  for (uint32_t i = 1; i < unfairFlows + fairFlows; ++i)
     {
       detailsSs << "," << edgeDelays[i];
     }
@@ -427,8 +436,10 @@ int main (int argc, char *argv[])
 
   // Create output directory and base output filepath.
   outDir /= details;
+  NS_LOG_DEBUG ("Verifying that output directory does not exist: " << outDir);
   NS_ABORT_UNLESS (! boost::filesystem::exists (outDir));
-  boost::filesystem::create_directory (outDir);
+  NS_LOG_DEBUG ("Creating output directory: " << outDir);
+  boost::filesystem::create_directories (outDir);
   boost::filesystem::path outFlp = outDir;
   outFlp /= details;
 
@@ -474,13 +485,21 @@ int main (int argc, char *argv[])
   NS_LOG_INFO ("Flows:");
   for (auto& sink : sinks)
     {
-      double tputMbps = sink->GetTotalRx () * 8 / durS / 1e6;
-      sumTputMbps += tputMbps;
-      sumTputMbpsSq += pow (tputMbps, 2);
-      Ptr<TcpSocketBase> sock = DynamicCast<TcpSocketBase> (
-        sink->GetSockets ().front ());
-      NS_LOG_INFO ("  " << (sock->GetReceivingBbr () ? "BBR" : "Other") <<
-                   " - avg tput: " << tputMbps << " Mb/s");
+      int num_socks = sink->GetSockets ().size ();
+      if (num_socks == 0)
+        {
+          NS_LOG_WARN ("No sockets for this sink!");
+        }
+      else
+        {
+          double tputMbps = sink->GetTotalRx () * 8 / durS / 1e6;
+          sumTputMbps += tputMbps;
+          sumTputMbpsSq += pow (tputMbps, 2);
+          Ptr<TcpSocketBase> sock = DynamicCast<TcpSocketBase> (
+            sink->GetSockets ().front ());
+          NS_LOG_INFO ("  " << (sock->GetReceivingBbr () ? "BBR" : "Other") <<
+                       " - avg tput: " << tputMbps << " Mb/s");
+        }
     }
   NS_LOG_INFO ("Jain's fairness index: " <<
                pow (sumTputMbps, 2) / (sinks.size () * sumTputMbpsSq));

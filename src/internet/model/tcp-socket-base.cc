@@ -4125,7 +4125,6 @@ TcpSocketBase::Unfair (Ptr<Packet> p, SequenceNumber32 seq) {
   // Debug logging.
   NS_LOG_DEBUG ("one-way delay: " << Simulator::Now () - tag.sndTime);
   NS_LOG_DEBUG ("tag.sndTime: " << tag.sndTime);
-  NS_LOG_DEBUG ("tag.isBbr: " << tag.isBbr);
   NS_LOG_DEBUG ("m_receivingBbr: " << std::string (m_receivingBbr ? "Yes" : "No"));
   std::string fairShareTypeStr = FairShareTypeToStr (m_fairShareType);
   NS_LOG_DEBUG ("m_fairShareType" << fairShareTypeStr);
