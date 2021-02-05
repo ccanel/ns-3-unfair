@@ -31,6 +31,11 @@
 #include "ns3/tcp-socket-base.h"
 #include "ns3/tcp-congestion-ops.h"
 
+// PHILIP: NOTE!!!!! Our changes to this class only work if we make the following assumptions:
+// 1. There is no fragementation
+// 2. There is an infinite stream of data to send, data is always 0, and once the application sends the first packet we
+// keep sending irrespective of what the application does
+// 3. SACK is enabled. If SACK is disabled we need to do additional testing in the *RenoSack* functions
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE ("TcpTxBuffer");
@@ -113,12 +118,13 @@ TcpTxBuffer::~TcpTxBuffer (void)
       delete item;
     }
 
-  for (it = m_appList.begin (); it != m_appList.end (); ++it)
-    {
-      TcpTxItem *item = *it;
-      m_size -= item->m_packet->GetSize ();
-      delete item;
-    }
+  // PHILIP : If this list does not exist, we do not need to destruct it!
+//  for (it = m_appList.begin (); it != m_appList.end (); ++it)
+//    {
+//      TcpTxItem *item = *it;
+//      m_size -= item->m_packet->GetSize ();
+//      delete item;
+//    }
 }
 
 SequenceNumber32
@@ -183,11 +189,15 @@ TcpTxBuffer::Add (Ptr<Packet> p)
     {
       if (p->GetSize () > 0)
         {
-          TcpTxItem *item = new TcpTxItem ();
-          item->m_packet = p->Copy ();
-          m_appList.insert (m_appList.end (), item);
-          m_size += p->GetSize ();
-
+          // PHILIP: Dangerous times
+//          TcpTxItem *item = new TcpTxItem ();
+//          item->m_packet = p->Copy ();
+//          m_appList.insert (m_appList.end (), item);
+// PHILIP: Why maintain a counter att all
+//            m_appListPackets++;
+//          m_size += p->GetSize ();
+// PHILIP: We do this as part of our infinite data buffer, and to make sure the data is always rounded to MSS
+            m_size = (m_maxBuffer / m_segmentSize) * m_segmentSize;
           NS_LOG_LOGIC ("Updated size=" << m_size << ", lastSeq=" <<
                         m_firstByteSeq + SequenceNumber32 (m_size));
         }
@@ -237,7 +247,7 @@ TcpTxBuffer::CopyFromSequence (uint32_t numBytes, const SequenceNumber32& seq)
   if (m_firstByteSeq + m_sentSize >= seq + s)
     {
       // already sent this block completely
-      outItem = MarkTransmittedSegment (s, seq);
+      outItem = GetTransmittedSegment (s, seq);
       NS_ASSERT (outItem != nullptr);
       NS_ASSERT (!outItem->m_sacked);
 
@@ -288,15 +298,25 @@ TcpTxBuffer::GetNewSegment (uint32_t numBytes)
   NS_LOG_INFO ("AppList start at " << startOfAppList << ", sentSize = " <<
                m_sentSize << " firstByte: " << m_firstByteSeq);
 
-  TcpTxItem *item = GetPacketFromList (m_appList, startOfAppList,
-                                       numBytes, startOfAppList);
+  // PHILIP: We be making loads of changes to save some mem
+//  TcpTxItem *item = GetPacketFromList (m_appList, startOfAppList,
+//                                       numBytes, startOfAppList);
+    TcpTxItem *item = new TcpTxItem ();
+    if (!m_appPacket) {
+        m_appPacket = Create<Packet> (m_segmentSize);
+    }
+    item->m_packet = m_appPacket;
+    // PHILIP : This be the end of our first set of changes here
   item->m_startSeq = startOfAppList;
 
   // Move item from AppList to SentList (should be the first, not too complex)
-  auto it = std::find (m_appList.begin (), m_appList.end (), item);
-  NS_ASSERT (it != m_appList.end ());
+  // PHILIP: We strike again to optimize memory, nothing for us to find since we don't have a list
+//  auto it = std::find (m_appList.begin (), m_appList.end (), item);
+//  NS_ASSERT (it != m_appList.end ());
+//  m_appList.erase (it);
+// PHILIP: Why maintain our counter at all
+//    m_appListPackets--; // equivalent of erasing it
 
-  m_appList.erase (it);
   m_sentList.insert (m_sentList.end (), item);
   m_sentSize += item->m_packet->GetSize ();
 
@@ -344,20 +364,15 @@ TcpTxBuffer::GetTransmittedSegment (uint32_t numBytes, const SequenceNumber32 &s
         }
     }
 
-  return GetPacketFromList (m_sentList, m_firstByteSeq, s, seq, &listEdited);
-}
-
-TcpTxItem*
-TcpTxBuffer::MarkTransmittedSegment (uint32_t numBytes, const SequenceNumber32 &seq)
-{
-  NS_LOG_FUNCTION (this << numBytes << seq);
-
-  TcpTxItem *item = GetTransmittedSegment (numBytes, seq);
+  TcpTxItem *item = GetPacketFromList (m_sentList, m_firstByteSeq, s, seq, &listEdited);
 
   if (! item->m_retrans)
     {
       m_retrans += item->m_packet->GetSize ();
       item->m_retrans = true;
+        // PHILIP
+        UpdatePq(false, item->m_startSeq.GetValue());
+        // END PHILIP
     }
 
   return item;
@@ -385,14 +400,18 @@ TcpTxBuffer::FindHighestSacked () const
   return ret;
 }
 
-
+// PHILIP: WE ASSUME WE NEVER SPLIT OR MERGE SINCE WE ALWAYS GENERATE PACKETS WITH ONE MSS!
 void
 TcpTxBuffer::SplitItems (TcpTxItem *t1, TcpTxItem *t2, uint32_t size) const
 {
-  NS_ASSERT (t1 != nullptr && t2 != nullptr);
+    throw std::logic_error( "PHILIP: This function is not yet changed to handle our PQ optimization for NextSeg. "
+                            "We do not expect splitting or merging since we always send one MSS" );
+
+
+    NS_ASSERT (t1 != nullptr && t2 != nullptr);
   NS_LOG_FUNCTION (this << *t2 << size);
 
-  t1->m_packet = t2->m_packet->CreateFragment (0, size);
+   t1->m_packet = t2->m_packet->CreateFragment (0, size);
   t2->m_packet->RemoveAtStart (size);
 
   t1->m_startSeq = t2->m_startSeq;
@@ -414,7 +433,7 @@ TcpTxBuffer::GetPacketFromList (PacketList &list, const SequenceNumber32 &listSt
   NS_LOG_FUNCTION (this << numBytes << seq);
 
   /*
-   * Our possibilites are sketched out in the following:
+   * Our possibilities are sketched out in the following:
    *
    *                    |------|     |----|     |----|
    * GetList (m_data) = |      | --> |    | --> |    |
@@ -596,9 +615,13 @@ static bool AreEquals (const bool &first, const bool &second)
   return first ? second : !second;
 }
 
+// PHILIP: We do not expect to have to deal with this case
 void
 TcpTxBuffer::MergeItems (TcpTxItem *t1, TcpTxItem *t2) const
 {
+    throw std::logic_error( "PHILIP: This function is not yet changed to handle our PQ optimization for NextSeg. "
+                            "We do not expect splitting or merging since we always send one MSS" );
+
   NS_ASSERT (t1 != nullptr && t2 != nullptr);
   NS_LOG_FUNCTION (this << *t1 << *t2);
   NS_LOG_INFO ("Merging " << *t2 << " into " << *t1);
@@ -610,7 +633,7 @@ TcpTxBuffer::MergeItems (TcpTxItem *t1, TcpTxItem *t2) const
 
   // If one is retrans and the other is not, cancel the retransmitted flag.
   // We are merging this segment for the retransmit, so the count will
-  // be updated in MarkTransmittedSegment.
+  // be updated in GetTransmittedSegment.
   if (! AreEquals (t1->m_retrans, t2->m_retrans))
     {
       if (t1->m_retrans)
@@ -659,6 +682,7 @@ TcpTxBuffer::RemoveFromCounts (TcpTxItem *item, uint32_t size)
       m_lostOut -= size;
     }
 }
+
 void
 TcpTxBuffer::DiscardUpTo (const SequenceNumber32& seq)
 {
@@ -679,6 +703,7 @@ TcpTxBuffer::DiscardUpTo (const SequenceNumber32& seq)
   PacketList::iterator i = m_sentList.begin ();
   while (m_size > 0 && offset > 0)
     {
+//      std::cout << "Loop the loop\n";
       if (i == m_sentList.end ())
         {
           // Move data from app list to sent list, so we can delete the item
@@ -696,13 +721,18 @@ TcpTxBuffer::DiscardUpTo (const SequenceNumber32& seq)
                      " while SND.UNA is " << m_firstByteSeq << " from " << *this);
 
       UpdateRateSample (item);
-
+      
       if (offset >= pktSize)
         { // This packet is behind the seqnum. Remove this packet from the buffer
-          m_size -= pktSize;
+          // PHILIP: Our buffer is an infinite source of packets
+//          m_size -= pktSize;
           m_sentSize -= pktSize;
           offset -= pktSize;
           m_firstByteSeq += pktSize;
+
+          // PHILIP: This packet is going to be erased, we remove it from our PQ too
+          UpdatePq(false, item->m_startSeq.GetValue());
+          // END PHILIP
 
           RemoveFromCounts (item, pktSize);
 
@@ -719,7 +749,7 @@ TcpTxBuffer::DiscardUpTo (const SequenceNumber32& seq)
           // PacketTags are preserved when fragmenting
           item->m_packet = item->m_packet->CreateFragment (offset, pktSize);
           item->m_startSeq += offset;
-          m_size -= offset;
+//          m_size -= offset; // PHILIP: Our buffer is infinite
           m_sentSize -= offset;
           m_firstByteSeq += offset;
 
@@ -747,6 +777,7 @@ TcpTxBuffer::DiscardUpTo (const SequenceNumber32& seq)
           // have been ACKed. This is, most likely, our wrong guessing
           // when adding Reno dupacks in the count.
           head->m_sacked = false;
+          // PHILIP: MarkHeadAsLost() takes care of updating the PQ
           m_sackedOut -= head->m_packet->GetSize ();
           NS_LOG_INFO ("Moving the SACK flag from the HEAD to another segment");
           AddRenoSack ();
@@ -814,6 +845,9 @@ TcpTxBuffer::Update (const TcpOptionSack::SackList &list)
                   if ((*item_it)->m_lost)
                     {
                       (*item_it)->m_lost = false;
+                        // PHILIP
+                        UpdatePq(false, (*item_it)->m_startSeq.GetValue());
+                        // END PHILIP
                       m_lostOut -= (*item_it)->m_packet->GetSize ();
                     }
 
@@ -893,6 +927,11 @@ TcpTxBuffer::UpdateLostCount ()
           if (!item->m_sacked && !item->m_lost)
             {
               item->m_lost = true;
+                // PHILIP
+                if (!item->m_retrans) {
+                    UpdatePq(true, item->m_startSeq.GetValue());
+                }
+                // END PHILIP
               m_lostOut += item->m_packet->GetSize ();
             }
         }
@@ -905,6 +944,14 @@ TcpTxBuffer::UpdateLostCount ()
       if (!item->m_lost)
         {
           item->m_lost = true;
+            // PHILIP
+            if (!item->m_retrans) {
+                UpdatePq(true, item->m_startSeq.GetValue());
+            }
+            // END PHILIP
+          if (item->m_sacked) {
+              std::logic_error("Item was marked lost but is also SACKed!");
+          }
           m_lostOut += item->m_packet->GetSize ();
         }
     }
@@ -951,8 +998,9 @@ TcpTxBuffer::IsLost (const SequenceNumber32 &seq) const
   return false;
 }
 
+// PHILIP: NOTE!!! Qualify the function with a const if we revert the PQ optimization for NextSeg
 bool
-TcpTxBuffer::NextSeg (SequenceNumber32 *seq, bool isRecovery) const
+TcpTxBuffer::NextSeg (SequenceNumber32 *seq, bool isRecovery)
 {
   NS_LOG_FUNCTION (this);
   /* RFC 6675, NextSeg definition.
@@ -970,35 +1018,57 @@ TcpTxBuffer::NextSeg (SequenceNumber32 *seq, bool isRecovery) const
    *     (1.c) IsLost (S2) returns true.
    */
   PacketList::const_iterator it;
-  TcpTxItem *item;
+//  TcpTxItem *item; // PHILIP: Uncomment if we switch back to NS3 code here
   SequenceNumber32 seqPerRule3;
   bool isSeqPerRule3Valid = false;
-  SequenceNumber32 beginOfCurrentPkt = m_firstByteSeq;
+//  SequenceNumber32 beginOfCurrentPkt = m_firstByteSeq;  // PHILIP: Uncomment if we switch back to NS3 code here
 
-  for (it = m_sentList.begin (); it != m_sentList.end (); ++it)
-    {
-      item = *it;
+  // PHILIP: Use our PQ to speed things up here
+  while(!m_seqPq.empty()) {
+      uint32_t candidateSeq = m_seqPq.top();
 
-      // Condition 1.a , 1.b , and 1.c
-      if (item->m_retrans == false && item->m_sacked == false)
-        {
-          if (item->m_lost)
-            {
-              NS_LOG_INFO("IsLost, returning" << beginOfCurrentPkt);
-              *seq = beginOfCurrentPkt;
-              return true;
-            }
-          else if (seqPerRule3.GetValue () == 0 && isRecovery)
-            {
-              NS_LOG_INFO ("Saving for rule 3 the seq " << beginOfCurrentPkt);
-              isSeqPerRule3Valid = true;
-              seqPerRule3 = beginOfCurrentPkt;
-            }
-        }
+      if (m_inPqSet.count(candidateSeq) == 0) {
+        // this sequence number was disqualified some point after it was added
+        m_seqPq.pop();
+      } else {
+          // we have a valid retransmission!
+          NS_LOG_INFO("IsLost, returning" << candidateSeq);
+          *seq = SequenceNumber32(candidateSeq);
+          return true;
+      }
+// PHILIP: In our case, there is always available unsent data (infinite buffer), so we don't have to worry about
+// Rule 3
+  }
 
-      // Nothing found, iterate
-      beginOfCurrentPkt += item->m_packet->GetSize ();
-    }
+  // PHILIP: Uncomment code below to revert
+//  for (it = m_sentList.begin (); it != m_sentList.end (); ++it)
+//    {
+//      item = *it;
+//
+//      // Condition 1.a , 1.b , and 1.c
+//      if (item->m_retrans == false && item->m_sacked == false)
+//        {
+//          if (item->m_lost)
+//            {
+//              NS_LOG_INFO("IsLost, returning" << beginOfCurrentPkt);
+//              *seq = beginOfCurrentPkt;
+//              return true;
+//            }
+//          else if (seqPerRule3.GetValue () == 0 && isRecovery)
+//            {
+//              NS_LOG_INFO ("Saving for rule 3 the seq " << beginOfCurrentPkt);
+//              isSeqPerRule3Valid = true;
+//              seqPerRule3 = beginOfCurrentPkt;
+//            }
+//        }
+//
+//      // Nothing found, iterate
+//      beginOfCurrentPkt += item->m_packet->GetSize ();
+//    }
+// PHILIP: End commented code
+
+// PHILIP: In our case, there is always available unsent data (infinite buffer), so we don't have to worry about
+// Rule 3
 
   /* (2) If no sequence number 'S2' per rule (1) exists but there
    *     exists available unsent data and the receiver's advertised
@@ -1016,6 +1086,10 @@ TcpTxBuffer::NextSeg (SequenceNumber32 *seq, bool isRecovery) const
     {
       NS_LOG_INFO ("There isn't unsent data.");
     }
+
+// PHILIP: In our case, there is always available unsent data (infinite buffer), so we don't have to worry about
+// Rule 3
+std::logic_error("We never should have got here since we have an infinite buffer");
 
   /* (3) If the conditions for rules (1) and (2) fail, but there exists
    *     an unSACKed sequence number 'S3' that meets the criteria for
@@ -1198,6 +1272,9 @@ TcpTxBuffer::ResetRenoSack ()
   for (auto it = m_sentList.begin (); it != m_sentList.end (); ++it)
     {
       (*it)->m_sacked = false;
+      // PHILIP: We don't worry about updating our PQ here since whenever lost was set to true, sack was false then
+      // (this is an assumption we assert with exceptions thrown if the assumption is false)
+      // and would have been added to the PQ if necessary
     }
 
   m_highestSack = std::make_pair (m_sentList.end (), SequenceNumber32 (0));
@@ -1214,9 +1291,19 @@ TcpTxBuffer::ResetSentList ()
     {
       item = m_sentList.back ();
       item->m_retrans = item->m_sacked = item->m_lost = false;
-      m_appList.push_front (item);
+      // PHILIP: We reset our PQ a couple lines down
+      // PHILIP: Here we replace the push front with an increment of our magic counter (all our packets are identical)
+//      m_appList.push_front (item);
+// PHILIP: Why maintain a counter at all
+//      m_appListPackets++; // okay to just do this since all its properties from sentList are reset to false
       m_sentList.pop_back ();
     }
+
+  // PHILIP: we reset our stuff too
+  m_inPqSet.clear();
+  // PHILIP: Is the below assignment a memory leak? How is the old queue garbage collected?
+  m_seqPq = priority_queue<uint32_t,vector<uint32_t>,greater<uint32_t> >();
+  // PHILIP: END
 
   m_sentSize = 0;
   m_lostOut = 0;
@@ -1239,7 +1326,10 @@ TcpTxBuffer::ResetLastSegmentSent ()
         {
           m_retrans -= item->m_packet->GetSize ();
         }
-      m_appList.insert (m_appList.begin (), item);
+      // PHILIP: Bye bye app list, hello counter
+//      m_appList.insert (m_appList.begin (), item);
+// PHILIP: We don't even need to maintain a counter
+//        m_appListPackets++; // NOT very sure if this is safe since we can't save members of the item from the sentList
     }
   ConsistencyCheck ();
 }
@@ -1284,6 +1374,11 @@ TcpTxBuffer::SetSentListLost (bool resetSack)
         }
 
       (*it)->m_retrans = false;
+        // PHILIP
+        if ((*it)->m_lost) {
+            UpdatePq(true, (*it)->m_startSeq.GetValue());
+        }
+        // END PHILIP
     }
 
   NS_LOG_INFO ("Set sent list lost, status: " << *this);
@@ -1317,6 +1412,11 @@ TcpTxBuffer::DeleteRetransmittedFlagFromHead ()
   if (m_sentList.front ()->m_retrans)
     {
       m_sentList.front ()->m_retrans = false;
+      // PHILIP
+      if (m_sentList.front()->m_lost) {
+          UpdatePq(true, m_sentList.front()->m_startSeq.GetValue());
+      }
+      // END PHILIP
       m_retrans -= m_sentList.front ()->m_packet->GetSize ();
     }
   ConsistencyCheck ();
@@ -1348,7 +1448,29 @@ TcpTxBuffer::MarkHeadAsLost ()
           m_lostOut += m_sentList.front ()->m_packet->GetSize ();
         }
     }
+
+  // PHILIP: The head has earned its way to our PQ
+    UpdatePq(true, m_sentList.front()->m_startSeq.GetValue());
   ConsistencyCheck ();
+}
+
+// PHILIP: We use this function to centralize code related to the maintenance of our PQ
+void TcpTxBuffer::UpdatePq(bool add, uint32_t seq) {
+    if (add) {
+        // if we're here it means the packet is both not retransmitted and is lost, so:
+        // 1. Add it to the PQ
+        if (m_inPqSet.count(seq) == 0) {
+            // this sequence number isn't in our PQ yet, add it
+            m_seqPq.push(seq);
+            m_inPqSet.insert(seq);
+        }
+        // already in our PQ, do nothing
+    } else {
+        // we want to remove this packet from the PQ if present
+        // we do this by updating a set which will be used as a whitelist later when PQ has packets dequeued
+        // from it
+        m_inPqSet.erase(seq);
+    }
 }
 
 void
@@ -1372,6 +1494,11 @@ TcpTxBuffer::AddRenoSack (void)
   if (it != m_sentList.end ())
     {
       (*it)->m_sacked = true;
+      if ((*it)->m_lost) {
+          std::logic_error("PHILIP: We assume that lost => !sacked, here sacked is true but lost is also true!"
+                           " Need to rework"
+                           "our whitelist/blacklist addition/removal logic to account for this");
+      }
       m_sackedOut += (*it)->m_packet->GetSize ();
       m_highestSack = std::make_pair (it, (*it)->m_startSeq);
       NS_LOG_INFO ("Added a Reno SACK, status: " << *this);
@@ -1560,12 +1687,14 @@ operator<< (std::ostream & os, TcpTxBuffer const & tcpTxBuf)
       sentSize += p->GetSize ();
       beginOfCurrentPacket += p->GetSize ();
     }
-
-  for (it = tcpTxBuf.m_appList.begin (); it != tcpTxBuf.m_appList.end (); ++it)
-    {
-      appSize += (*it)->m_packet->GetSize ();
-    }
-
+    // PHILIP: Wow, high impact change. Be careful Phil.
+//  for (it = tcpTxBuf.m_appList.begin (); it != tcpTxBuf.m_appList.end (); ++it)
+//    {
+//      appSize += (*it)->m_packet->GetSize ();
+//    }
+// This is how we compensate for the commenting
+//    appSize += tcpTxBuf.m_segmentSize * tcpTxBuf.m_appListPackets;
+    appSize += tcpTxBuf.m_segmentSize;
   os << "Sent list: " << ss.str () << ", size = " << tcpTxBuf.m_sentList.size () <<
     " Total size: " << tcpTxBuf.m_size <<
     " m_firstByteSeq = " << tcpTxBuf.m_firstByteSeq <<
@@ -1575,8 +1704,8 @@ operator<< (std::ostream & os, TcpTxBuffer const & tcpTxBuf)
     " m_sackedOut = " << tcpTxBuf.m_sackedOut;
 
   NS_ASSERT (sentSize == tcpTxBuf.m_sentSize);
-  NS_ASSERT (tcpTxBuf.m_size - tcpTxBuf.m_sentSize == appSize);
+//  NS_ASSERT (tcpTxBuf.m_size - tcpTxBuf.m_sentSize == appSize);
   return os;
 }
 
-} // namepsace ns3
+} // namespace ns3
